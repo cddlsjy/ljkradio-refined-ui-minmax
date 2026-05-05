@@ -1,0 +1,348 @@
+网络电台播放器完整修改大纲（兼容 Android 4.4 / API 19）
+一、修改目标
+问题	根本原因	修复方案
+IjkPlayer 无法播放央广等 m3u8 流	缺少 icy=1 等必要 HTTP 头	增加完整的 HTTP 头配置，支持 Shoutcast/Icecast
+ExoPlayer 播放 m3u8 流报 Source Error	写死使用 ProgressiveMediaSource	根据 URL 自动选择 HlsMediaSource
+设置中切换播放器引擎无效	只保存配置，未重建播放器	动态释放旧播放器并重建，恢复播放状态
+切换引擎后硬解码设置丢失	新播放器未应用保存的解码方式	切换后读取并应用硬解码配置
+切换引擎时暂停状态会短暂出声	使用延时暂停方案	使用标志位在播放状态回调中无声暂停
+SDK 19 兼容性问题	setAllowChunklessPreparation 和 LiveConfiguration 不可用	降级 ExoPlayer 版本 + 条件调用
+二、修改文件清单
+文件	操作
+StationStorage.kt	增加硬解码配置存储方法
+IjkPlayerManager.kt	增加 HTTP 头（icy=1, referer 等）
+ExoPlayerManager.kt	支持 HLS 流，兼容 SDK 19
+MainActivity.kt	引擎切换逻辑、状态恢复、解码设置同步
+app/build.gradle	调整 ExoPlayer 依赖版本
+三、逐文件详细修改内容
+📁 文件 1：StationStorage.kt
+路径：main/java/com/example/ijkradio/data/StationStorage.kt
+
+操作：在类中添加硬解码配置的存储与读取方法。
+
+kotlin
+class StationStorage(private val context: Context) {
+
+    companion object {
+        // ... 已有常量 ...
+        private const val KEY_USE_HARDWARE_DECODE = "use_hardware_decode"
+    }
+
+    // ... 已有代码 ...
+
+    /**
+     * 保存硬解码设置
+     */
+    fun saveUseHardwareDecode(useHardware: Boolean) {
+        prefs.edit().putBoolean(KEY_USE_HARDWARE_DECODE, useHardware).apply()
+    }
+
+    /**
+     * 获取硬解码设置（默认 true）
+     */
+    fun getUseHardwareDecode(): Boolean {
+        return prefs.getBoolean(KEY_USE_HARDWARE_DECODE, true)
+    }
+}
+📁 文件 2：IjkPlayerManager.kt
+路径：main/java/com/example/ijkradio/player/IjkPlayerManager.kt
+
+操作：替换 playStation 方法中的 HTTP 头设置部分。
+
+定位到以下代码块（在 player.reset() 之后，player.dataSource = station.url 之前）：
+
+kotlin
+player.reset()
+player.configurePlayer()
+player.setupListeners()
+
+// 为所有电台添加通用 HTTP 头...
+替换为以下完整代码：
+
+kotlin
+player.reset()
+player.configurePlayer()
+player.setupListeners()
+
+// ========== HTTP 头设置（完整替换） ==========
+// 通用 User-Agent（模拟浏览器）
+player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "user_agent",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+
+// 关键：告诉服务器需要 ICY 元数据（Shoutcast/Icecast 流必需）
+player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "icy", 1)
+// 启用 ICY 元数据解析（可选，用于获取歌曲信息）
+player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "icy_metadata", 1)
+
+// 根据域名设置特定 Referer
+val referer = when {
+    station.url.contains("cri.cn") || station.url.contains("sk.cri.cn") -> "https://sk.cri.cn/"
+    station.url.contains("hnradio.com") -> "http://a.live.hnradio.com/"
+    station.url.contains("cnr.cn") -> "http://ngcdn001.cnr.cn/"
+    station.url.contains("asiafm.hk") || station.url.contains("asiafm.net") || station.url.contains("goldfm.cn") -> "http://asiafm.hk/"
+    station.url.contains("qingting.fm") -> "https://www.qingting.fm/"
+    else -> null
+}
+referer?.let {
+    player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "referer", it)
+}
+
+// 央广流可能需要保持长连接
+if (station.url.contains("cnr.cn")) {
+    player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "multiple_requests", 1)
+}
+// ================================================
+
+player.dataSource = station.url
+player.prepareAsync()
+注意：确保文件中已导入 tv.danmaku.ijk.media.player.IjkMediaPlayer，无需额外导入。
+
+📁 文件 3：ExoPlayerManager.kt
+路径：main/java/com/example/ijkradio/player/ExoPlayerManager.kt
+
+操作：
+
+在文件顶部添加导入
+
+修改 playStation 方法，支持 HLS 流并兼容 SDK 19
+
+添加导入（在文件顶部已有导入区域）：
+
+kotlin
+import android.os.Build
+import com.google.android.exoplayer2.C
+import com.google.android.exoplayer2.source.hls.HlsMediaSource
+完整替换 playStation 方法：
+
+kotlin
+override fun playStation(station: Station) {
+    Log.d(TAG, "Playing station: ${station.name}, URL: ${station.url}")
+    currentStation = station
+    _playbackState.postValue(PlaybackState.Buffering)
+
+    try {
+        exoPlayer?.let { player ->
+            val dataSourceFactory = DefaultDataSourceFactory(
+                context,
+                Util.getUserAgent(context, "IjkRadioPlayer")
+            )
+
+            val uri = Uri.parse(station.url)
+            val mediaItemBuilder = MediaItem.Builder().setUri(uri)
+
+            // 仅在 API 21+ 设置追帧速度（SDK 19 跳过）
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                mediaItemBuilder.setLiveConfiguration(
+                    MediaItem.LiveConfiguration.Builder()
+                        .setMaxPlaybackSpeed(1.02f)
+                        .build()
+                )
+            }
+            val mediaItem = mediaItemBuilder.build()
+
+            val mediaSource = when {
+                uri.lastPathSegment?.endsWith(".m3u8", ignoreCase = true) == true ||
+                Util.inferContentType(uri) == C.TYPE_HLS -> {
+                    // SDK 19 兼容：不使用 setAllowChunklessPreparation
+                    HlsMediaSource.Factory(dataSourceFactory)
+                        .createMediaSource(mediaItem)
+                }
+                else -> {
+                    ProgressiveMediaSource.Factory(dataSourceFactory)
+                        .createMediaSource(mediaItem)
+                }
+            }
+
+            player.setMediaSource(mediaSource)
+            player.prepare()
+            player.play()
+        }
+    } catch (e: Exception) {
+        Log.e(TAG, "Error playing station", e)
+        _playbackState.postValue(PlaybackState.Error("播放失败: ${e.message}"))
+    }
+}
+📁 文件 4：MainActivity.kt
+路径：main/java/com/example/ijkradio/MainActivity.kt
+
+操作：修改多处，包括添加成员变量、修改初始化方法、添加引擎切换方法、修改设置对话框逻辑、修改状态更新方法。
+
+4.1 添加成员变量
+在类成员变量区域添加：
+
+kotlin
+// 用于引擎切换时无声恢复暂停状态
+private var pendingAutoPause = false
+4.2 修改 initPlayer 方法
+将原来的 initPlayer() 方法替换为带参数版本：
+
+kotlin
+private fun initPlayer(useExoPlayer: Boolean) {
+    playerManager = if (useExoPlayer) {
+        ExoPlayerManager.getInstance(this)
+    } else {
+        IjkPlayerManager.getInstance(this)
+    }
+    playerManager.initialize()
+    playerManager.setVolume(stationStorage.getVolume())
+    // 应用保存的硬解码设置
+    playerManager.setHardwareDecode(stationStorage.getUseHardwareDecode())
+}
+在 onCreate 中调用（找到 initViews() 之后的 initPlayer() 调用，替换为）：
+
+kotlin
+initPlayer(stationStorage.getUseExoPlayer())
+4.3 添加引擎切换方法 switchPlayerEngine
+在类中添加以下方法（位置不限，建议放在 initPlayer 附近）：
+
+kotlin
+private fun switchPlayerEngine(useExoPlayer: Boolean) {
+    val wasPlaying = playerManager.isPlaying()
+    val currentStation = playerManager.getCurrentStation()
+    val wasPaused = !wasPlaying && currentStation != null
+
+    // 释放旧播放器
+    playerManager.release()
+
+    // 创建新播放器
+    initPlayer(useExoPlayer)
+
+    // 重新订阅播放状态（因为 playerManager 实例已更新）
+    lifecycleScope.launch {
+        playerManager.playbackState.collect { state ->
+            updatePlaybackUI(state)
+        }
+    }
+
+    // 恢复播放状态
+    when {
+        wasPlaying && currentStation != null -> {
+            playerManager.playStation(currentStation)
+        }
+        wasPaused && currentStation != null -> {
+            // 设置标志位，待播放器准备好后自动暂停（无声恢复）
+            pendingAutoPause = true
+            playerManager.playStation(currentStation)
+        }
+    }
+
+    // 更新 UI 选中状态
+    if (currentStation != null) {
+        selectedStation = currentStation
+        stationAdapter.setSelectedStation(currentStation)
+    }
+
+    Toast.makeText(
+        this,
+        "播放器引擎已切换为 ${if (useExoPlayer) "ExoPlayer" else "IjkPlayer"}",
+        Toast.LENGTH_SHORT
+    ).show()
+}
+4.4 修改 updatePlaybackUI 方法
+在 updatePlaybackUI 方法中，找到 is PlaybackState.Playing 分支，增加自动暂停逻辑：
+
+kotlin
+is PlaybackState.Playing -> {
+    statusTextView.text = state.stationName
+    playPauseButton.setImageResource(R.drawable.ic_pause)
+    val station = stations.find { it.name == state.stationName }
+    stationAdapter.setPlayingStation(station)
+
+    // 如果处于待自动暂停状态，立即暂停（无声恢复）
+    if (pendingAutoPause) {
+        pendingAutoPause = false
+        playerManager.pause()
+    }
+}
+4.5 修改 showSettingsDialog 中的确定按钮逻辑
+定位到 setPositiveButton 代码块，完整替换为以下内容：
+
+kotlin
+.setPositiveButton("确定") { _, _ ->
+    val useExoPlayerNew = radioExo.isChecked
+    val oldUseExoPlayer = stationStorage.getUseExoPlayer()
+    val useHardwareDecode = radioHardware.isChecked
+
+    // 保存音量
+    val volume = volumeSlider.value
+    playerManager.setVolume(volume)
+    stationStorage.saveVolume(volume)
+
+    // 保存自动播放开关状态（成员变量已在 Switch 监听器中更新，无需额外保存）
+
+    // 保存播放器引擎设置
+    stationStorage.saveUseExoPlayer(useExoPlayerNew)
+
+    // 保存硬解码设置
+    stationStorage.saveUseHardwareDecode(useHardwareDecode)
+
+    // 如果引擎发生变化，切换播放器
+    if (useExoPlayerNew != oldUseExoPlayer) {
+        switchPlayerEngine(useExoPlayerNew)
+    } else {
+        // 引擎未变，仅应用解码方式
+        playerManager.setHardwareDecode(useHardwareDecode)
+    }
+}
+注意：确保 dialog_settings.xml 中硬解码 RadioButton 的 ID 为 radio_hardware，软解码为 radio_software（原文件已有）。
+
+📁 文件 5：app/build.gradle
+路径：项目根目录下的 app/build.gradle（或 app/build.gradle.kts）
+
+操作：检查并调整 ExoPlayer 依赖版本为 2.18.5（兼容 SDK 19）。
+
+在 dependencies 块中，确保存在以下依赖（若已有则修改版本号）：
+
+gradle
+dependencies {
+    // ... 其他依赖 ...
+
+    implementation 'com.google.android.exoplayer:exoplayer-core:2.18.5'
+    implementation 'com.google.android.exoplayer:exoplayer-hls:2.18.5'
+}
+如果项目中已有更高版本的 ExoPlayer，请降级到 2.18.5。
+
+四、修改完成后的验证步骤
+编译项目：确保无语法错误、无缺失导入。
+
+IjkPlayer 模式测试：
+
+设置中选中 IjkPlayer
+
+播放“中国之声”、“经济之声” → 应正常缓冲并播放，无 Source Error
+
+播放“北京交通广播”（HTTPS MP3）→ 部分设备可能因 IjkPlayer 自身限制无法播放，属正常
+
+ExoPlayer 模式测试：
+
+切换到 ExoPlayer 引擎
+
+播放“中国之声”、“经济之声” → 应正常播放（HLS 流）
+
+播放“北京交通广播”、“常德交通广播” → 应正常播放（HTTPS MP3）
+
+引擎切换测试：
+
+播放过程中切换引擎 → 应看到 Toast 提示，播放自动恢复（略有缓冲）
+
+暂停状态下切换引擎 → 应保持暂停状态，切换过程无声音泄漏
+
+切换后音量设置应保持不变
+
+硬解码设置测试：
+
+修改解码方式后切换引擎，设置应保持生效
+
+SDK 19 兼容性测试（如有条件）：
+
+在 Android 4.4 设备或模拟器上运行，确保无崩溃，核心功能正常
+
+五、注意事项
+所有代码修改均保持原有代码风格与异常处理逻辑。
+
+本次修改未涉及 NetworkHelper 与 JsonStationLoader，无需调整。
+
+若项目中已存在 setAllowChunklessPreparation 或类似调用，请按上述方案移除或条件化。
+
+ExoPlayer 版本降级后，原有其他依赖（如 exoplayer-dash、exoplayer-ui 等）若存在，也建议统一到 2.18.5 以避免冲突。
+

@@ -1,0 +1,189 @@
+ 我来分析这个问题。根据你的描述，问题是：
+
+1. **播放错误1000**（`MEDIA_ERROR_UNKNOWN`）后，播放器停止
+2. **触摸屏**可以继续点击其他电台播放
+3. **遥控器**无法换台播放
+
+查看代码，问题出在 `IjkPlayerManager.kt` 的 `OnErrorListenerImpl` 中：
+
+```kotlin
+private inner class OnErrorListenerImpl : IMediaPlayer.OnErrorListener {
+    override fun onError(mp: IMediaPlayer?, what: Int, extra: Int): Boolean {
+        // ...
+        _playbackState.postValue(PlaybackState.Error(errorMsg))
+        stopPositionUpdates()
+        return true // 错误已处理
+    }
+}
+```
+
+当播放错误发生时，虽然更新了状态，但**没有重置播放器状态**。IjkMediaPlayer 在 error 状态下需要调用 `reset()` 才能重新使用，但代码中没有处理。
+
+另外，`MainActivity` 中的 `moveSelection` 在 `autoPlayEnabled` 为 true 时会调用 `playStationAndUpdateUI`，但如果播放器处于错误状态，`playStation` 中的 `reset()` 调用可能无法正常执行。
+
+## 修复方案
+
+### 1. 修改 `IjkPlayerManager.kt` - 错误处理时重置播放器
+
+```kotlin
+private inner class OnErrorListenerImpl : IMediaPlayer.OnErrorListener {
+    override fun onError(mp: IMediaPlayer?, what: Int, extra: Int): Boolean {
+        val errorMsg = when (what) {
+            IMediaPlayer.MEDIA_ERROR_NOT_VALID_FOR_PROGRESSIVE_PLAYBACK ->
+                "视频内容无效"
+            IMediaPlayer.MEDIA_ERROR_UNKNOWN ->
+                "未知错误: what=$what, extra=$extra"
+            else -> "播放错误: what=$what, extra=$extra"
+        }
+        Log.e(TAG, "Playback error: $errorMsg")
+        _playbackState.postValue(PlaybackState.Error(errorMsg))
+        stopPositionUpdates()
+        
+        // 关键修复：错误后重置播放器，使其可以重新使用
+        try {
+            ijkPlayer?.reset()
+            Log.d(TAG, "Player reset after error")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error resetting player after error", e)
+            // 如果 reset 失败，重新初始化播放器
+            reinitializePlayer()
+        }
+        
+        return true // 错误已处理
+    }
+}
+```
+
+### 2. 添加播放器重新初始化方法（在 `IjkPlayerManager.kt` 中）
+
+```kotlin
+/**
+ * 重新初始化播放器（当 reset 失败时使用）
+ */
+private fun reinitializePlayer() {
+    try {
+        ijkPlayer?.release()
+        ijkPlayer = IjkMediaPlayer().apply {
+            configurePlayer()
+            setupListeners()
+        }
+        Log.d(TAG, "Player reinitialized after error")
+    } catch (e: Exception) {
+        Log.e(TAG, "Failed to reinitialize player", e)
+        _playbackState.postValue(PlaybackState.Error("播放器重新初始化失败"))
+    }
+}
+```
+
+### 3. 修改 `MainActivity.kt` - 确保遥控器切换时强制播放
+
+```kotlin
+private fun moveSelection(delta: Int) {
+    val currentPos = getSelectedPosition()
+    val newPos = currentPos + delta
+    if (newPos in 0 until stationAdapter.itemCount) {
+        val station = stationAdapter.getItemAt(newPos)
+        stationAdapter.setSelectedStation(station)
+        recyclerView.smoothScrollToPosition(newPos)
+        
+        // 关键修复：无论 autoPlayEnabled 如何，都要确保可以切换
+        // 即使播放器处于错误状态，也要尝试播放
+        if (station != null) {
+            // 强制停止当前播放（即使出错），然后播放新电台
+            playerManager.stop()
+            // 延迟一点确保 stop 完成
+            recyclerView.postDelayed({
+                playStationAndUpdateUI(station)
+            }, 100)
+        }
+    }
+}
+```
+
+### 4. 更健壮的 `playStation` 方法（`IjkPlayerManager.kt`）
+
+```kotlin
+/**
+ * 播放电台
+ */
+fun playStation(station: Station) {
+    Log.d(TAG, "Playing station: ${station.name}, URL: ${station.url}")
+    currentStation = station
+    _playbackState.postValue(PlaybackState.Buffering)
+
+    try {
+        ijkPlayer?.let { player ->
+            // 如果播放器处于错误状态，先重置
+            try {
+                player.reset()
+            } catch (e: Exception) {
+                Log.w(TAG, "Reset failed, trying to reinitialize", e)
+                reinitializePlayer()
+            }
+            
+            // 重新配置和设置监听器（reset 后需要重新设置）
+            player.configurePlayer()
+            player.setupListeners()
+
+            // 定向修复：央广/环球资讯需要特殊 HTTP 头
+            if (station.url.contains("cri.cn") || station.url.contains("sk.cri.cn")) {
+                player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "user_agent",
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "referer",
+                    "https://sk.cri.cn/")
+            }
+
+            player.dataSource = station.url
+            player.prepareAsync()
+        } ?: run {
+            // 如果 player 为 null，重新初始化
+            reinitializePlayer()
+            // 递归调用，但要防止无限递归
+            if (ijkPlayer != null) {
+                playStation(station)
+            }
+        }
+    } catch (e: Exception) {
+        Log.e(TAG, "Error playing station", e)
+        _playbackState.postValue(PlaybackState.Error("播放失败: ${e.message}"))
+        // 尝试恢复
+        reinitializePlayer()
+    }
+}
+```
+
+### 5. 修改 `stop()` 方法确保彻底停止（`IjkPlayerManager.kt`）
+
+```kotlin
+/**
+ * 停止播放
+ */
+fun stop() {
+    try {
+        stopPositionUpdates()
+        ijkPlayer?.let { player ->
+            if (player.isPlaying) {
+                player.stop()
+            }
+            // 停止后重置，为下次播放做准备
+            player.reset()
+        }
+        currentStation = null
+        _playbackState.postValue(PlaybackState.Stopped)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error stopping playback", e)
+        // 如果 stop 失败，尝试重新初始化
+        reinitializePlayer()
+    }
+}
+```
+
+## 关键修改总结
+
+| 问题 | 原因 | 解决方案 |
+|------|------|----------|
+| 错误1000后遥控器无法换台 | 播放器处于错误状态未重置 | `OnErrorListener` 中添加 `reset()` |
+| 播放器可能彻底损坏 | `reset()` 也可能失败 | 添加 `reinitializePlayer()` 方法完全重建播放器 |
+| 切换电台时状态混乱 | `moveSelection` 直接播放 | 先 `stop()` 再延迟播放，确保状态清理 |
+
+这些修改确保了即使在播放错误后，播放器也能恢复到可用状态，遥控器可以正常切换电台。

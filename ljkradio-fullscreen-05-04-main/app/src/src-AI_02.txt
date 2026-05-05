@@ -1,0 +1,2853 @@
+================================================================================
+项目目录树
+================================================================================
+
+├── main
+│   ├── AndroidManifest.xml
+│   ├── assets
+│   │   └── stations.json
+│   ├── java
+│   │   └── com
+│   │       └── example
+│   │           └── ijkradio
+│   │               ├── MainActivity.kt
+│   │               ├── data
+│   │               │   ├── Station.kt
+│   │               │   └── StationStorage.kt
+│   │               ├── player
+│   │               │   ├── ExoPlayerManager.kt
+│   │               │   ├── IPlayerManager.kt
+│   │               │   └── IjkPlayerManager.kt
+│   │               ├── ui
+│   │               │   ├── PlaybackState.kt
+│   │               │   └── StationAdapter.kt
+│   │               └── utils
+│   │                   ├── JsonStationLoader.kt
+│   │                   └── NetworkHelper.kt
+│   └── res
+│       ├── drawable
+│       │   ├── bg_station_normal.xml
+│       │   ├── bg_station_selected.xml
+│       │   ├── dialog_background.xml
+│       │   ├── ic_add.xml
+│       │   ├── ic_delete.xml
+│       │   ├── ic_launcher_background.xml
+│       │   ├── ic_launcher_foreground.xml
+│       │   ├── ic_pause.xml
+│       │   ├── ic_play.xml
+│       │   ├── ic_settings.xml
+│       │   ├── ic_volume_down.xml
+│       │   ├── ic_volume_off.xml
+│       │   └── ic_volume_up.xml
+│       ├── layout
+│       │   ├── activity_main.xml
+│       │   ├── dialog_add_station.xml
+│       │   ├── dialog_settings.xml
+│       │   └── item_station.xml
+│       ├── mipmap-anydpi-v26
+│       │   ├── ic_launcher.xml
+│       │   └── ic_launcher_round.xml
+│       └── values
+│           ├── colors.xml
+│           ├── strings.xml
+│           └── themes.xml
+├── src-AI.txt
+├── src-AI_01.txt
+└── src-AI_06.txt
+
+================================================================================
+代码文件内容
+================================================================================
+
+## 文件: main/java/com/example/ijkradio/MainActivity.kt
+```kt
+package com.example.ijkradio
+
+import android.app.AlertDialog
+import android.os.Bundle
+import android.util.Log
+import android.view.LayoutInflater
+import android.view.View
+import android.widget.*
+import androidx.appcompat.app.AppCompatActivity
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.launch
+import androidx.recyclerview.widget.ItemTouchHelper
+import com.example.ijkradio.data.Station
+import com.example.ijkradio.data.StationStorage
+import com.example.ijkradio.player.IPlayerManager
+import com.example.ijkradio.player.ExoPlayerManager
+import com.example.ijkradio.player.IjkPlayerManager
+import com.example.ijkradio.ui.PlaybackState
+import com.example.ijkradio.ui.StationAdapter
+import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.google.android.material.slider.Slider
+
+/**
+ * 主界面Activity
+ * 管理电台列表、播放器控制和UI交互
+ */
+class MainActivity : AppCompatActivity() {
+
+    companion object {
+        private const val TAG = "MainActivity"
+    }
+
+    // UI组件
+    private lateinit var recyclerView: RecyclerView
+    private lateinit var playPauseButton: FloatingActionButton
+    private lateinit var settingsButton: ImageButton
+    private lateinit var statusTextView: TextView
+    private lateinit var emptyView: TextView
+    private lateinit var volumeSlider: Slider
+    private lateinit var volumeIcon: ImageView
+
+    // 适配器
+    private lateinit var stationAdapter: StationAdapter
+
+    // 数据和播放器
+    private lateinit var stationStorage: StationStorage
+    private lateinit var playerManager: IPlayerManager
+
+    // 电台列表
+    private var stations: MutableList<Station> = mutableListOf()
+    private var selectedStation: Station? = null
+    private var autoPlayEnabled = true   // 遥控器移动焦点时自动播放
+    private var autoPlayLastStationEnabled = true   // 自动播放上一次播放的电台
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+
+        Log.d(TAG, "onCreate: Initializing activity")
+
+        // 初始化组件
+        initStorage()
+        initViews()
+        initPlayer()
+        initRecyclerView()
+        setupListeners()
+
+        // 加载电台列表
+        loadStations()
+
+        // 恢复上次播放
+        restoreLastPlayed()
+    }
+
+    /**
+     * 初始化UI组件
+     */
+    private fun initViews() {
+        recyclerView = findViewById(R.id.stations_recycler_view)
+        playPauseButton = findViewById(R.id.play_pause_button)
+        settingsButton = findViewById(R.id.settings_button)
+        statusTextView = findViewById(R.id.status_text_view)
+        emptyView = findViewById(R.id.empty_view)
+    }
+
+    /**
+     * 初始化存储
+     */
+    private fun initStorage() {
+        stationStorage = StationStorage(this)
+    }
+
+    /**
+     * 初始化播放器
+     */
+    private fun initPlayer() {
+        // 根据保存的播放器引擎选择初始化播放器
+        val useExoPlayer = stationStorage.getUseExoPlayer()
+        playerManager = if (useExoPlayer) {
+            ExoPlayerManager.getInstance(this)
+        } else {
+            IjkPlayerManager.getInstance(this)
+        }
+        playerManager.initialize()
+
+        // 设置保存的音量
+        playerManager.setVolume(stationStorage.getVolume())
+    }
+
+    /**
+     * 初始化RecyclerView
+     */
+    private fun initRecyclerView() {
+        stationAdapter = StationAdapter(
+            onStationClick = { station -> onStationClicked(station) },
+            onDeleteClick = { station -> showDeleteDialog(station) }
+        )
+
+        recyclerView.apply {
+            layoutManager = LinearLayoutManager(this@MainActivity)
+            adapter = stationAdapter
+            setHasFixedSize(true)
+            isFocusable = true
+            isFocusableInTouchMode = true
+            requestFocus()
+        }
+
+        // 添加左滑删除功能
+        val itemTouchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.LEFT) {
+            override fun onMove(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder): Boolean {
+                return false
+            }
+
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
+                val position = viewHolder.adapterPosition
+                val station = stationAdapter.getItemAt(position)
+                if (station != null) {
+                    showDeleteDialog(station)
+                }
+            }
+        })
+        itemTouchHelper.attachToRecyclerView(recyclerView)
+    }
+
+    /**
+     * 设置监听器
+     */
+    private fun setupListeners() {
+        // 播放/暂停按钮
+        playPauseButton.setOnClickListener {
+            togglePlayPause()
+        }
+
+        // 添加电台按钮
+        findViewById<ImageButton>(R.id.add_station_button).setOnClickListener {
+            showAddStationDialog()
+        }
+
+        // 设置按钮
+        settingsButton.setOnClickListener {
+            showSettingsDialog()
+        }
+
+        // 监听播放器状态
+        lifecycleScope.launch {
+            playerManager.playbackState.collect {
+                updatePlaybackUI(it)
+            }
+        }
+    }
+
+    /**
+     * 加载电台列表
+     */
+    private fun loadStations() {
+        stations = stationStorage.getStations().toMutableList()
+        stationAdapter.submitList(stations.toList())
+        updateEmptyView()
+    }
+
+    /**
+     * 恢复上次播放
+     */
+    private fun restoreLastPlayed() {
+        val lastPlayed = stationStorage.getLastPlayed()
+        if (lastPlayed != null) {
+            selectedStation = lastPlayed
+            stationAdapter.setSelectedStation(lastPlayed)
+            // 如果启用了自动播放上一次电台，则自动播放
+            if (autoPlayLastStationEnabled) {
+                playerManager.playStation(lastPlayed)
+            }
+        }
+    }
+
+    /**
+     * 电台点击事件
+     */
+    private fun onStationClicked(station: Station) {
+        Log.d(TAG, "Station clicked: ${station.name}")
+        selectedStation = station
+        stationAdapter.setSelectedStation(station)
+        stationStorage.saveLastPlayed(station)
+
+        // 如果当前正在播放其他电台，切换到新电台
+        val currentStation = playerManager.getCurrentStation()
+        if (currentStation?.id != station.id) {
+            playerManager.playStation(station)
+        }
+    }
+
+    /**
+     * 切换播放/暂停
+     */
+    private fun togglePlayPause() {
+        val currentStation = selectedStation ?: return
+
+        when {
+            playerManager.isPlaying() -> {
+                playerManager.pause()
+            }
+            playerManager.getCurrentStation()?.id == currentStation.id -> {
+                playerManager.resume()
+            }
+            else -> {
+                playerManager.playStation(currentStation)
+            }
+        }
+    }
+
+    /**
+     * 更新播放UI
+     */
+    private fun updatePlaybackUI(state: PlaybackState) {
+        when (state) {
+            is PlaybackState.Stopped -> {
+                statusTextView.text = getString(R.string.status_stopped)
+                playPauseButton.setImageResource(R.drawable.ic_play)
+                stationAdapter.setPlayingStation(null)
+            }
+            is PlaybackState.Buffering -> {
+                statusTextView.text = getString(R.string.status_buffering)
+                playPauseButton.setImageResource(R.drawable.ic_pause)
+            }
+            is PlaybackState.Playing -> {
+                statusTextView.text = state.stationName
+                playPauseButton.setImageResource(R.drawable.ic_pause)
+                val station = stations.find { it.name == state.stationName }
+                stationAdapter.setPlayingStation(station)
+            }
+            is PlaybackState.Paused -> {
+                statusTextView.text = getString(R.string.status_paused)
+                playPauseButton.setImageResource(R.drawable.ic_play)
+            }
+            is PlaybackState.Error -> {
+                statusTextView.text = getString(R.string.status_error, state.message)
+                playPauseButton.setImageResource(R.drawable.ic_play)
+                Toast.makeText(this, state.message, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    /**
+     * 显示添加电台对话框
+     */
+    private fun showAddStationDialog() {
+        val dialogView = LayoutInflater.from(this)
+            .inflate(R.layout.dialog_add_station, null)
+
+        val nameInput = dialogView.findViewById<EditText>(R.id.station_name_input)
+        val urlInput = dialogView.findViewById<EditText>(R.id.station_url_input)
+        val descriptionInput = dialogView.findViewById<EditText>(R.id.station_description_input)
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.dialog_add_station_title)
+            .setView(dialogView)
+            .setPositiveButton(R.string.dialog_add) { _, _ ->
+                val name = nameInput.text.toString().trim()
+                val url = urlInput.text.toString().trim()
+                val description = descriptionInput.text.toString().trim()
+
+                if (name.isNotEmpty() && url.isNotEmpty()) {
+                    val station = Station(
+                        name = name,
+                        url = if (url.startsWith("http")) url else "http://$url",
+                        description = description
+                    )
+                    addStation(station)
+                } else {
+                    Toast.makeText(this, R.string.error_invalid_input, Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .show()
+    }
+
+    /**
+     * 显示删除确认对话框
+     */
+    private fun showDeleteDialog(station: Station) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.dialog_delete_title)
+            .setMessage(getString(R.string.dialog_delete_message, station.name))
+            .setPositiveButton(R.string.dialog_delete) { _, _ ->
+                deleteStation(station)
+            }
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .show()
+    }
+
+    /**
+     * 添加电台
+     */
+    private fun addStation(station: Station) {
+        if (station.isValid()) {
+            stationStorage.addStation(station)
+            loadStations()
+            Toast.makeText(this, R.string.station_added, Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, R.string.error_invalid_station, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * 删除电台
+     */
+    private fun deleteStation(station: Station) {
+        // 如果删除的是当前播放的电台，停止播放
+        if (playerManager.getCurrentStation()?.id == station.id) {
+            playerManager.stop()
+        }
+
+        // 如果删除的是选中的电台，清除选中
+        if (selectedStation?.id == station.id) {
+            selectedStation = null
+        }
+
+        stationStorage.removeStation(station)
+        loadStations()
+        Toast.makeText(this, R.string.station_deleted, Toast.LENGTH_SHORT).show()
+    }
+
+    /**
+     * 更新空状态视图
+     */
+    private fun updateEmptyView() {
+        if (stations.isEmpty()) {
+            emptyView.visibility = View.VISIBLE
+            recyclerView.visibility = View.GONE
+        } else {
+            emptyView.visibility = View.GONE
+            recyclerView.visibility = View.VISIBLE
+        }
+    }
+
+    // ==================== 生命周期管理 ====================
+
+    override fun onPause() {
+        super.onPause()
+        // 保存当前状态
+        playerManager.getCurrentStation()?.let {
+            stationStorage.saveLastPlayed(it)
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // 释放播放器资源
+        if (::playerManager.isInitialized) {
+            playerManager.release()
+        }
+    }
+
+    /**
+     * 显示设置对话框
+     */
+    private fun showSettingsDialog() {
+        val dialogView = LayoutInflater.from(this)
+            .inflate(R.layout.dialog_settings, null)
+
+        volumeSlider = dialogView.findViewById<Slider>(R.id.volume_slider)
+        volumeIcon = dialogView.findViewById<ImageView>(R.id.volume_icon)
+        val radioExo = dialogView.findViewById<RadioButton>(R.id.radio_exo)
+        val radioIjk = dialogView.findViewById<RadioButton>(R.id.radio_ijk)
+        val radioHardware = dialogView.findViewById<RadioButton>(R.id.radio_hardware)
+        val radioSoftware = dialogView.findViewById<RadioButton>(R.id.radio_software)
+        val autoPlaySwitch = dialogView.findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.auto_play_switch)
+        val autoPlayLastStationSwitch = dialogView.findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.auto_play_last_station_switch)
+
+        // 初始化音量滑块
+        volumeSlider.value = stationStorage.getVolume()
+        updateVolumeIcon(stationStorage.getVolume())
+
+        // 初始化播放器引擎
+        val useExoPlayer = stationStorage.getUseExoPlayer()
+        if (useExoPlayer) {
+            radioExo.isChecked = true
+        } else {
+            radioIjk.isChecked = true
+        }
+
+        // 初始化解码方式，默认打开软解码
+        radioSoftware.isChecked = true
+        playerManager.setHardwareDecode(false)
+
+        // 初始化自动播放开关
+        autoPlaySwitch.isChecked = autoPlayEnabled
+        
+        // 初始化自动播放上一次电台开关
+        autoPlayLastStationSwitch.isChecked = autoPlayLastStationEnabled
+
+        // 音量滑块监听器
+        volumeSlider.addOnChangeListener { slider: Slider, value: Float, fromUser: Boolean ->
+            if (fromUser) {
+                playerManager.setVolume(value)
+                stationStorage.saveVolume(value)
+                updateVolumeIcon(value)
+            }
+        }
+
+        // 自动播放开关监听器
+        autoPlaySwitch.setOnCheckedChangeListener { _, isChecked ->
+            autoPlayEnabled = isChecked
+        }
+
+        // 自动播放上一次电台开关监听器
+        autoPlayLastStationSwitch.setOnCheckedChangeListener { _, isChecked ->
+            autoPlayLastStationEnabled = isChecked
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setPositiveButton("确定") { _, _ ->
+                // 保存播放器引擎设置
+                val useExoPlayer = radioExo.isChecked
+                stationStorage.saveUseExoPlayer(useExoPlayer)
+                
+                // 保存解码方式设置
+                val useHardwareDecode = radioHardware.isChecked
+                playerManager.setHardwareDecode(useHardwareDecode)
+            }
+            .setNegativeButton("取消", null)
+            .create()
+        
+        // 设置按钮颜色
+        dialog.setOnShowListener { 
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(resources.getColor(R.color.colorPrimary))
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(resources.getColor(R.color.colorPrimary))
+        }
+        
+        dialog.show()
+    }
+
+    /**
+     * 更新音量图标
+     */
+    private fun updateVolumeIcon(volume: Float) {
+        val iconRes = when {
+            volume <= 0f -> R.drawable.ic_volume_off
+            volume < 0.5f -> R.drawable.ic_volume_down
+            else -> R.drawable.ic_volume_up
+        }
+        volumeIcon.setImageResource(iconRes)
+    }
+
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+        when (keyCode) {
+            android.view.KeyEvent.KEYCODE_DPAD_UP -> {
+                moveSelection(-1)
+                return true
+            }
+            android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
+                moveSelection(1)
+                return true
+            }
+            android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER -> {
+                selectedStation?.let {
+                    if (playerManager.isPlaying() && playerManager.getCurrentStation()?.id == it.id) {
+                        playerManager.pause()
+                    } else {
+                        playStationAndUpdateUI(it)
+                    }
+                }
+                return true
+            }
+            android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                togglePlayPause()
+                return true
+            }
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    private fun moveSelection(delta: Int) {
+        val count = stationAdapter.itemCount
+        if (count == 0) return
+
+        // 获取当前选中位置，若无选中则根据方向决定起始位置
+        val currentPos = if (selectedStation == null) {
+            if (delta > 0) -1 else count  // 使下方模运算得到正确边界
+        } else {
+            stations.indexOfFirst { it.id == selectedStation?.id }.coerceAtLeast(0)
+        }
+
+        // 循环计算新位置
+        val newPos = ((currentPos + delta) % count + count) % count
+        val station = stationAdapter.getItemAt(newPos)
+        stationAdapter.setSelectedStation(station)
+        recyclerView.smoothScrollToPosition(newPos)
+        if (autoPlayEnabled && station != null) {
+            playStationAndUpdateUI(station)
+        }
+    }
+
+    private fun getSelectedPosition(): Int {
+        val selected = stationAdapter.getSelectedStation() ?: return 0
+        return stations.indexOfFirst { it.id == selected.id }.coerceAtLeast(0)
+    }
+
+    private fun playStationAndUpdateUI(station: Station) {
+        onStationClicked(station)
+    }
+
+    override fun onBackPressed() {
+        // 最小化应用而不是退出
+        moveTaskToBack(true)
+        super.onBackPressed()
+    }
+}
+```
+
+## 文件: main/java/com/example/ijkradio/data/Station.kt
+```kt
+package com.example.ijkradio.data
+
+/**
+ * 电台数据类
+ * @param name 电台名称
+ * @param url 电台流地址
+ * @param id 电台唯一标识符（可选）
+ * @param description 电台描述（可选）
+ * @param logoUrl 电台图标URL（可选）
+ */
+data class Station(
+    val name: String,
+    val url: String,
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val description: String = "",
+    val logoUrl: String = ""
+) {
+    /**
+     * 验证电台URL是否有效
+     */
+    fun isValid(): Boolean {
+        return name.isNotBlank() && url.isNotBlank() &&
+               (url.startsWith("http://") || url.startsWith("https://"))
+    }
+
+    /**
+     * 电台显示名称
+     */
+    fun getDisplayName(): String {
+        return if (description.isNotBlank()) {
+            "$name - $description"
+        } else {
+            name
+        }
+    }
+
+    override fun toString(): String {
+        return "Station(name='$name', url='$url', id='$id')"
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+        other as Station
+        return id == other.id
+    }
+
+    override fun hashCode(): Int {
+        return id.hashCode()
+    }
+}
+```
+
+## 文件: main/java/com/example/ijkradio/data/StationStorage.kt
+```kt
+package com.example.ijkradio.data
+
+import android.content.Context
+import android.content.SharedPreferences
+
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+
+/**
+ * 电台存储管理器
+ * 使用 SharedPreferences 存储电台列表和播放状态
+ */
+class StationStorage(private val context: Context) {
+
+    companion object {
+        private const val PREFS_NAME = "ijk_radio_prefs"
+        private const val KEY_STATIONS = "stations"
+        private const val KEY_LAST_PLAYED_ID = "last_played_id"
+        private const val KEY_LAST_VOLUME = "last_volume"
+        private const val KEY_LAST_POSITION = "last_position"
+        private const val KEY_USE_EXO_PLAYER = "use_exo_player"
+    }
+
+    private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val gson = Gson()
+
+    /**
+     * 保存电台列表
+     */
+    fun saveStations(stations: List<Station>) {
+        val json = gson.toJson(stations)
+        prefs.edit().putString(KEY_STATIONS, json).apply()
+    }
+
+    /**
+     * 获取电台列表
+     */
+    fun getStations(): List<Station> {
+        val json = prefs.getString(KEY_STATIONS, null)
+        val stations = if (json != null) {
+            try {
+                val type = object : TypeToken<List<Station>>() {}.type
+                gson.fromJson(json, type) ?: emptyList()
+            } catch (e: Exception) {
+                emptyList()
+            }
+        } else {
+            // 首次运行：使用默认电台列表
+            val defaultStations = getDefaultStations()
+            saveStations(defaultStations)
+            defaultStations
+        }
+        return stations
+    }
+
+    /**
+     * 添加电台
+     */
+    fun addStation(station: Station) {
+        val stations = getStations().toMutableList()
+        // 检查是否已存在同名电台
+        if (stations.none { it.name == station.name && it.url == station.url }) {
+            stations.add(station)
+            saveStations(stations)
+        }
+    }
+
+    /**
+     * 删除电台
+     */
+    fun removeStation(station: Station) {
+        val stations = getStations().toMutableList()
+        val iterator = stations.iterator()
+        while (iterator.hasNext()) {
+            if (iterator.next().id == station.id) {
+                iterator.remove()
+                break
+            }
+        }
+        saveStations(stations)
+    }
+
+    /**
+     * 删除电台 by ID
+     */
+    fun removeStationById(stationId: String) {
+        val stations = getStations().toMutableList()
+        val iterator = stations.iterator()
+        while (iterator.hasNext()) {
+            if (iterator.next().id == stationId) {
+                iterator.remove()
+                break
+            }
+        }
+        saveStations(stations)
+    }
+
+    /**
+     * 更新电台
+     */
+    fun updateStation(station: Station) {
+        val stations = getStations().toMutableList()
+        val index = stations.indexOfFirst { it.id == station.id }
+        if (index != -1) {
+            stations[index] = station
+            saveStations(stations)
+        }
+    }
+
+    /**
+     * 保存上次播放的电台ID
+     */
+    fun saveLastPlayed(station: Station) {
+        prefs.edit()
+            .putString(KEY_LAST_PLAYED_ID, station.id)
+            .apply()
+    }
+
+    /**
+     * 获取上次播放的电台ID
+     */
+    fun getLastPlayedId(): String? {
+        return prefs.getString(KEY_LAST_PLAYED_ID, null)
+    }
+
+    /**
+     * 获取上次播放的电台
+     */
+    fun getLastPlayed(): Station? {
+        val lastId = getLastPlayedId() ?: return null
+        return getStations().find { it.id == lastId }
+    }
+
+    /**
+     * 保存音量
+     */
+    fun saveVolume(volume: Float) {
+        prefs.edit().putFloat(KEY_LAST_VOLUME, volume).apply()
+    }
+
+    /**
+     * 获取音量
+     */
+    fun getVolume(): Float {
+        return prefs.getFloat(KEY_LAST_VOLUME, 1.0f)
+    }
+
+    /**
+     * 保存播放位置（毫秒）
+     */
+    fun savePosition(position: Long) {
+        prefs.edit().putLong(KEY_LAST_POSITION, position).apply()
+    }
+
+    /**
+     * 获取播放位置（毫秒）
+     */
+    fun getPosition(): Long {
+        return prefs.getLong(KEY_LAST_POSITION, 0L)
+    }
+
+    /**
+     * 清空所有数据
+     */
+    fun clearAll() {
+        prefs.edit().clear().apply()
+    }
+
+    /**
+     * 获取默认电台列表
+     */
+    private fun getDefaultStations(): List<Station> {
+        return listOf(
+            Station(
+                name = "湖南交通广播",
+                url = "http://a.live.hnradio.com/jtpd/radio120k_jtpd.m3u8?auth_key=1588751155-0-0-301d7e28868eff70a72edf5e4569b546",
+                description = "湖南交通广播"
+            ),
+            Station(
+                name = "CNR-1-中国之声",
+                url = "http://ngcdn001.cnr.cn/live/zgzs/index.m3u8",
+                description = "CNR-1-中国之声"
+            ),
+            Station(
+                name = "CNR-15 中国交通广播",
+                url = "https://ngcdn002.cnr.cn/live/gsgljtgb/index.m3u8",
+                description = "CNR-15 中国交通广播"
+            ),
+            Station(
+                name = "CMG环球资讯广播",
+                url = "https://sk.cri.cn/905.m3u8",
+                description = "CMG环球资讯广播"
+            ),
+            Station(
+                name = "CNR-2 经济之声",
+                url = "http://ngcdn002.cnr.cn/live/jjzs/index.m3u8",
+                description = "CNR-2 经济之声"
+            ),
+            Station(
+                name = "AsiaFM高清音乐台",
+                url = "http://asiafm.hk:8000/asiahd",
+                description = "AsiaFM高清音乐台"
+            ),
+            Station(
+                name = "AsiaFM 亚洲热歌台【2023.10.17】",
+                url = "http://hot.asiafm.net:8000/asiafm",
+                description = "AsiaFM 亚洲热歌台"
+            ),
+            Station(
+                name = "AsiaFM亚洲经典台",
+                url = "http://goldfm.cn:8000/goldfm",
+                description = "AsiaFM亚洲经典台"
+            ),
+            Station(
+                name = "AsiaFM 亚洲音乐台【2023.10.18】",
+                url = "http://asiafm.hk:8000/asiafm",
+                description = "AsiaFM 亚洲音乐台"
+            ),
+            Station(
+                name = "深圳交通广播",
+                url = "http://lhttp.qingting.fm/live/1272/64k.mp3",
+                description = "深圳交通广播"
+            ),
+            Station(
+                name = "上海交通广播",
+                url = "http://lhttp.qingting.fm/live/266/64k.mp3",
+                description = "上海交通广播"
+            ),
+            Station(
+                name = "青岛交通广播",
+                url = "http://lhttp.qingting.fm/live/1676/64k.mp3",
+                description = "青岛交通广播"
+            ),
+            Station(
+                name = "北京交通广播",
+                url = "https://lhttp.qingting.fm/live/336/64k.mp3",
+                description = "北京交通广播"
+            ),
+            Station(
+                name = "常德交通广播",
+                url = "https://lhttp.qingting.fm/live/15318209/64k.mp3",
+                description = "常德交通广播"
+            )
+        )
+    }
+
+    /**
+     * 检查是否为首次运行
+     */
+    fun isFirstRun(): Boolean {
+        return !prefs.contains(KEY_STATIONS)
+    }
+
+    /**
+     * 标记首次运行已完成
+     */
+    fun markFirstRunComplete() {
+        // 首次运行后会保存电台数据，所以只需检查KEY_STATIONS即可
+    }
+
+    /**
+     * 保存播放器引擎选择
+     */
+    fun saveUseExoPlayer(useExoPlayer: Boolean) {
+        prefs.edit().putBoolean(KEY_USE_EXO_PLAYER, useExoPlayer).apply()
+    }
+
+    /**
+     * 获取播放器引擎选择
+     */
+    fun getUseExoPlayer(): Boolean {
+        return prefs.getBoolean(KEY_USE_EXO_PLAYER, true) // 默认使用ExoPlayer
+    }
+}
+```
+
+## 文件: main/java/com/example/ijkradio/player/ExoPlayerManager.kt
+```kt
+package com.example.ijkradio.player
+
+import android.content.Context
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
+import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.asFlow
+import com.example.ijkradio.data.Station
+import com.example.ijkradio.ui.PlaybackState
+import com.google.android.exoplayer2.*
+import com.google.android.exoplayer2.audio.AudioAttributes
+import com.google.android.exoplayer2.source.ProgressiveMediaSource
+import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory
+import com.google.android.exoplayer2.util.Util
+import kotlinx.coroutines.flow.Flow
+
+/**
+ * ExoPlayer 播放器管理器单例类
+ * 负责管理 ExoPlayer 的生命周期和播放控制
+ */
+class ExoPlayerManager private constructor(private val context: Context) : IPlayerManager {
+
+    companion object {
+        private const val TAG = "ExoPlayerManager"
+
+        @Volatile
+        private var instance: ExoPlayerManager? = null
+
+        fun getInstance(context: Context): ExoPlayerManager {
+            return instance ?: synchronized(this) {
+                instance ?: ExoPlayerManager(context.applicationContext).also { instance = it }
+            }
+        }
+    }
+
+    // 播放器实例
+    private var exoPlayer: ExoPlayer? = null
+
+    // 当前播放的电台
+    private var currentStation: Station? = null
+
+    // 播放状态
+    private val _playbackState = MutableLiveData<PlaybackState>(PlaybackState.Stopped)
+    
+    // 实现IPlayerManager接口的playbackState属性
+    override val playbackState: Flow<PlaybackState>
+        get() = _playbackState.asFlow()
+
+    // 音量 (0.0 - 1.0)
+    private var currentVolume = 1.0f
+
+    // 硬解码开关
+    private var hardwareDecodeEnabled = true
+
+    /**
+     * 初始化播放器
+     */
+    override fun initialize() {
+        try {
+            // 创建ExoPlayer实例
+            exoPlayer = ExoPlayer.Builder(context)
+                .setAudioAttributes(AudioAttributes.DEFAULT, true)
+                .setHandleAudioBecomingNoisy(true)
+                .build()
+
+            // 设置播放器监听器
+            exoPlayer?.addListener(ExoPlayerListener())
+
+            Log.d(TAG, "ExoPlayer initialized successfully")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize ExoPlayer", e)
+            _playbackState.postValue(PlaybackState.Error("播放器初始化失败: ${e.message}"))
+        }
+    }
+
+    /**
+     * 播放电台
+     */
+    override fun playStation(station: Station) {
+        Log.d(TAG, "Playing station: ${station.name}, URL: ${station.url}")
+        currentStation = station
+        _playbackState.postValue(PlaybackState.Buffering)
+
+        try {
+            exoPlayer?.let { player ->
+                // 创建数据源工厂
+                val dataSourceFactory = DefaultDataSourceFactory(
+                    context,
+                    Util.getUserAgent(context, "IjkRadioPlayer")
+                )
+
+                // 创建媒体源
+                val mediaSource = ProgressiveMediaSource.Factory(dataSourceFactory)
+                    .createMediaSource(MediaItem.fromUri(Uri.parse(station.url)))
+
+                // 准备播放器
+                player.setMediaSource(mediaSource)
+                player.prepare()
+                player.play()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error playing station", e)
+            _playbackState.postValue(PlaybackState.Error("播放失败: ${e.message}"))
+        }
+    }
+
+    /**
+     * 暂停播放
+     */
+    override fun pause() {
+        try {
+            exoPlayer?.let { player ->
+                if (player.isPlaying) {
+                    player.pause()
+                    _playbackState.postValue(PlaybackState.Paused)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error pausing playback", e)
+        }
+    }
+
+    /**
+     * 恢复播放
+     */
+    override fun resume() {
+        try {
+            exoPlayer?.let { player ->
+                player.play()
+                currentStation?.let { station ->
+                    _playbackState.postValue(PlaybackState.Playing(station.name))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error resuming playback", e)
+        }
+    }
+
+    /**
+     * 停止播放
+     */
+    override fun stop() {
+        try {
+            exoPlayer?.let { player ->
+                player.stop()
+                _playbackState.postValue(PlaybackState.Stopped)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping playback", e)
+        }
+    }
+
+    /**
+     * 设置音量
+     */
+    override fun setVolume(volume: Float) {
+        currentVolume = volume.coerceIn(0f, 1f)
+        try {
+            exoPlayer?.volume = currentVolume
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting volume", e)
+        }
+    }
+
+    /**
+     * 设置硬解码
+     */
+    override fun setHardwareDecode(useHardware: Boolean) {
+        hardwareDecodeEnabled = useHardware
+        // ExoPlayer会自动处理解码方式，这里可以根据需要进行配置
+    }
+
+    /**
+     * 检查是否正在播放
+     */
+    override fun isPlaying(): Boolean {
+        return exoPlayer?.isPlaying == true
+    }
+
+    /**
+     * 获取当前播放的电台
+     */
+    override fun getCurrentStation(): Station? = currentStation
+
+    /**
+     * 释放播放器资源
+     */
+    override fun release() {
+        try {
+            exoPlayer?.release()
+            exoPlayer = null
+            currentStation = null
+            _playbackState.postValue(PlaybackState.Stopped)
+            Log.d(TAG, "ExoPlayer released")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error releasing ExoPlayer", e)
+        }
+    }
+
+    // ==================== 内部监听器实现 ====================
+
+    private inner class ExoPlayerListener : Player.Listener {
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            when (playbackState) {
+                Player.STATE_BUFFERING -> {
+                    Log.d(TAG, "Buffering")
+                    _playbackState.postValue(PlaybackState.Buffering)
+                }
+                Player.STATE_READY -> {
+                    Log.d(TAG, "Ready")
+                    currentStation?.let {
+                        _playbackState.postValue(PlaybackState.Playing(it.name))
+                    }
+                }
+                Player.STATE_ENDED -> {
+                    Log.d(TAG, "Ended")
+                    _playbackState.postValue(PlaybackState.Stopped)
+                }
+                Player.STATE_IDLE -> {
+                    Log.d(TAG, "Idle")
+                }
+            }
+        }
+
+        override fun onPlayerError(error: PlaybackException) {
+            Log.e(TAG, "Player error: ${error.message}")
+            _playbackState.postValue(PlaybackState.Error(error.message ?: "未知错误"))
+        }
+    }
+}
+```
+
+## 文件: main/java/com/example/ijkradio/player/IjkPlayerManager.kt
+```kt
+package com.example.ijkradio.player
+
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.asFlow
+import com.example.ijkradio.data.Station
+import com.example.ijkradio.ui.PlaybackState
+import kotlinx.coroutines.flow.Flow
+import tv.danmaku.ijk.media.player.IjkMediaPlayer
+import tv.danmaku.ijk.media.player.IMediaPlayer
+import tv.danmaku.ijk.media.player.misc.ITrackInfo
+
+/**
+ * IjkPlayer 播放器管理器单例类
+ * 负责管理 IjkMediaPlayer 的生命周期和播放控制
+ */
+class IjkPlayerManager private constructor(private val context: Context) : IPlayerManager {
+
+    companion object {
+        private const val TAG = "IjkPlayerManager"
+        private const val BUFFER_SIZE = 1024 * 1024 // 1MB buffer
+        private const val RECONNECT_ATTEMPTS = 5
+
+        @Volatile
+        private var instance: IjkPlayerManager? = null
+
+        fun getInstance(context: Context): IjkPlayerManager {
+            return instance ?: synchronized(this) {
+                instance ?: IjkPlayerManager(context.applicationContext).also { instance = it }
+            }
+        }
+    }
+
+    // 播放器实例
+    private var ijkPlayer: IjkMediaPlayer? = null
+
+    // 当前播放的电台
+    private var currentStation: Station? = null
+
+    // 播放状态
+    private val _playbackState = MutableLiveData<PlaybackState>(PlaybackState.Stopped)
+    val playbackStateLiveData: LiveData<PlaybackState> = _playbackState
+    
+    // 实现IPlayerManager接口的playbackState属性
+    override val playbackState: Flow<PlaybackState>
+        get() = _playbackState.asFlow()
+
+    // 播放进度（用于音频可视化）
+    private val _playbackPosition = MutableLiveData<Long>(0L)
+    val playbackPosition: LiveData<Long> = _playbackPosition
+
+    // Handler 用于定时更新
+    private val handler = Handler(Looper.getMainLooper())
+    private var positionUpdateRunnable: Runnable? = null
+
+    // 是否已初始化
+    private var isInitialized = false
+
+    // 音量 (0.0 - 1.0)
+    private var currentVolume = 1.0f
+
+    // 硬解码开关
+    private var hardwareDecodeEnabled = true
+
+    /**
+     * 初始化播放器
+     */
+    override fun initialize() {
+        if (isInitialized) {
+            Log.d(TAG, "Player already initialized")
+            return
+        }
+
+        try {
+            // 加载 IjkPlayer 原生库
+            IjkMediaPlayer.loadLibrariesOnce(null)
+
+            // 创建播放器实例
+            ijkPlayer = IjkMediaPlayer().apply {
+                configurePlayer()
+                setupListeners()
+            }
+
+            isInitialized = true
+            Log.d(TAG, "Player initialized successfully")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize player", e)
+            _playbackState.postValue(PlaybackState.Error("播放器初始化失败: ${e.message}"))
+        }
+    }
+
+    /**
+     * 配置播放器参数
+     */
+    private fun IjkMediaPlayer.configurePlayer() {
+        if (hardwareDecodeEnabled) {
+            // 启用硬解码
+            setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec", 1)
+            setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-auto-rotate", 1)
+            setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-handle-resolution-change", 1)
+        } else {
+            // 禁用硬解码，使用软解
+            setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec", 0)
+        }
+
+        // 音频输出使用 OpenSL ES
+        setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "opensles", 1)
+
+        // 缓冲大小（微秒），弱网时增加缓冲
+        setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "max-buffer-size", BUFFER_SIZE.toLong())
+
+        // 准备完成后自动开始播放
+        setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "start-on-prepared", 1)
+
+        // 错误恢复尝试次数
+        setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "reconnect", RECONNECT_ATTEMPTS.toLong())
+
+        // 启用快速定位（对于直播流很重要）
+        setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "fflags", "fastseek")
+
+        // 设置超时时间（微秒）
+        setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "timeout", 30000000L) // 30秒
+
+        // 无限缓冲（直播流推荐）
+        setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "infbuf", 1)
+    }
+
+    /**
+     * 设置播放器监听器
+     */
+    private fun IjkMediaPlayer.setupListeners() {
+        setOnPreparedListener(OnPreparedListenerImpl())
+        setOnErrorListener(OnErrorListenerImpl())
+        setOnCompletionListener(OnCompletionListenerImpl())
+        setOnInfoListener(OnInfoListenerImpl())
+        setOnBufferingUpdateListener(OnBufferingUpdateListenerImpl())
+    }
+
+    /**
+     * 播放电台
+     */
+    override fun playStation(station: Station) {
+        Log.d(TAG, "Playing station: ${station.name}, URL: ${station.url}")
+        currentStation = station
+        _playbackState.postValue(PlaybackState.Buffering)
+
+        try {
+            ijkPlayer?.let { player ->
+                player.reset()
+                player.configurePlayer()
+                player.setupListeners()
+
+                // 为所有电台添加通用 HTTP 头，模拟浏览器请求
+                player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "user_agent",
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+                
+                // 为央广/环球资讯添加特殊 HTTP 头
+                if (station.url.contains("cri.cn") || station.url.contains("sk.cri.cn")) {
+                    player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "referer",
+                        "https://sk.cri.cn/")
+                }
+                
+                // 为其他电台添加适当的 referer
+                else if (station.url.contains("hnradio.com")) {
+                    player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "referer",
+                        "http://a.live.hnradio.com/")
+                }
+                else if (station.url.contains("cnr.cn")) {
+                    player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "referer",
+                        "http://ngcdn001.cnr.cn/")
+                }
+                else if (station.url.contains("asiafm.hk") || station.url.contains("asiafm.net") || station.url.contains("goldfm.cn")) {
+                    player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "referer",
+                        "http://asiafm.hk/")
+                }
+                else if (station.url.contains("qingting.fm")) {
+                    player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "referer",
+                        "https://www.qingting.fm/")
+                }
+
+                player.dataSource = station.url
+                player.prepareAsync()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error playing station", e)
+            _playbackState.postValue(PlaybackState.Error("播放失败: ${e.message}"))
+        }
+    }
+
+    /**
+     * 暂停播放
+     */
+    override fun pause() {
+        try {
+            ijkPlayer?.let { player ->
+                if (player.isPlaying) {
+                    player.pause()
+                    _playbackState.postValue(PlaybackState.Paused)
+                    stopPositionUpdates()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error pausing playback", e)
+        }
+    }
+
+    /**
+     * 恢复播放
+     */
+    override fun resume() {
+        try {
+            ijkPlayer?.let { player ->
+                player.start()
+                currentStation?.let { station ->
+                    _playbackState.postValue(PlaybackState.Playing(station.name))
+                }
+                startPositionUpdates()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error resuming playback", e)
+        }
+    }
+
+    /**
+     * 停止播放
+     */
+    override fun stop() {
+        try {
+            stopPositionUpdates()
+            ijkPlayer?.stop()
+            _playbackState.postValue(PlaybackState.Stopped)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping playback", e)
+        }
+    }
+
+    /**
+     * 设置音量
+     * @param volume 音量值 (0.0 - 1.0)
+     */
+    override fun setVolume(volume: Float) {
+        currentVolume = volume.coerceIn(0f, 1f)
+        try {
+            ijkPlayer?.setVolume(currentVolume, currentVolume)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting volume", e)
+        }
+    }
+
+    /**
+     * 获取当前音量
+     */
+    fun getVolume(): Float = currentVolume
+
+    /**
+     * 设置硬解码开关
+     */
+    override fun setHardwareDecode(enabled: Boolean) {
+        hardwareDecodeEnabled = enabled
+        if (isInitialized) {
+            ijkPlayer?.let { player ->
+                if (hardwareDecodeEnabled) {
+                    player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec", 1)
+                } else {
+                    player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec", 0)
+                }
+            }
+        }
+    }
+
+    /**
+     * 获取硬解码开关状态
+     */
+    fun isHardwareDecodeEnabled(): Boolean {
+        return hardwareDecodeEnabled
+    }
+
+    /**
+     * 是否正在播放
+     */
+    override fun isPlaying(): Boolean {
+        return ijkPlayer?.isPlaying == true
+    }
+
+    /**
+     * 获取当前播放的电台
+     */
+    override fun getCurrentStation(): Station? = currentStation
+
+    /**
+     * 释放播放器资源
+     */
+    override fun release() {
+        stopPositionUpdates()
+        try {
+            ijkPlayer?.release()
+            ijkPlayer = null
+            isInitialized = false
+            currentStation = null
+            _playbackState.postValue(PlaybackState.Stopped)
+            Log.d(TAG, "Player released")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error releasing player", e)
+        }
+    }
+
+    /**
+     * 开始位置更新
+     */
+    private fun startPositionUpdates() {
+        stopPositionUpdates()
+        positionUpdateRunnable = object : Runnable {
+            override fun run() {
+                ijkPlayer?.let { player ->
+                    try {
+                        _playbackPosition.postValue(player.currentPosition)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error getting position", e)
+                    }
+                }
+                handler.postDelayed(this, 1000) // 每秒更新一次
+            }
+        }
+        positionUpdateRunnable?.let { handler.post(it) }
+    }
+
+    /**
+     * 停止位置更新
+     */
+    private fun stopPositionUpdates() {
+        positionUpdateRunnable?.let { handler.removeCallbacks(it) }
+        positionUpdateRunnable = null
+    }
+
+    // ==================== 内部监听器实现 ====================
+
+    private inner class OnPreparedListenerImpl : IMediaPlayer.OnPreparedListener {
+        override fun onPrepared(mp: IMediaPlayer?) {
+            Log.d(TAG, "Media prepared")
+            mp?.let { player ->
+                player.setVolume(currentVolume, currentVolume)
+                player.start()
+                currentStation?.let { station ->
+                    _playbackState.postValue(PlaybackState.Playing(station.name))
+                }
+                startPositionUpdates()
+            }
+        }
+    }
+
+    private inner class OnErrorListenerImpl : IMediaPlayer.OnErrorListener {
+        override fun onError(mp: IMediaPlayer?, what: Int, extra: Int): Boolean {
+            val errorMsg = when (what) {
+                IMediaPlayer.MEDIA_ERROR_NOT_VALID_FOR_PROGRESSIVE_PLAYBACK ->
+                    "视频内容无效"
+                IMediaPlayer.MEDIA_ERROR_UNKNOWN ->
+                    "未知错误: what=$what, extra=$extra"
+                else -> "播放错误: what=$what, extra=$extra"
+            }
+            Log.e(TAG, "Playback error: $errorMsg")
+            _playbackState.postValue(PlaybackState.Error(errorMsg))
+            stopPositionUpdates()
+            return true // 错误已处理
+        }
+    }
+
+    private inner class OnCompletionListenerImpl : IMediaPlayer.OnCompletionListener {
+        override fun onCompletion(mp: IMediaPlayer?) {
+            Log.d(TAG, "Playback completed")
+            _playbackState.postValue(PlaybackState.Stopped)
+            stopPositionUpdates()
+        }
+    }
+
+    private inner class OnInfoListenerImpl : IMediaPlayer.OnInfoListener {
+        override fun onInfo(mp: IMediaPlayer?, what: Int, extra: Int): Boolean {
+            when (what) {
+                IMediaPlayer.MEDIA_INFO_BUFFERING_START -> {
+                    Log.d(TAG, "Buffering started")
+                    _playbackState.postValue(PlaybackState.Buffering)
+                }
+                IMediaPlayer.MEDIA_INFO_BUFFERING_END -> {
+                    Log.d(TAG, "Buffering ended")
+                    currentStation?.let { station ->
+                        _playbackState.postValue(PlaybackState.Playing(station.name))
+                    }
+                }
+                IMediaPlayer.MEDIA_INFO_NETWORK_BANDWIDTH -> {
+                    Log.d(TAG, "Network bandwidth: $extra")
+                }
+                IMediaPlayer.MEDIA_INFO_AUDIO_RENDERING_START -> {
+                    Log.d(TAG, "Audio rendering started")
+                }
+            }
+            return false
+        }
+    }
+
+    private inner class OnBufferingUpdateListenerImpl : IMediaPlayer.OnBufferingUpdateListener {
+        override fun onBufferingUpdate(mp: IMediaPlayer?, percent: Int) {
+            if (percent in 1..99) {
+                Log.d(TAG, "Buffering: $percent%")
+            }
+        }
+    }
+}
+```
+
+## 文件: main/java/com/example/ijkradio/player/IPlayerManager.kt
+```kt
+package com.example.ijkradio.player
+
+import com.example.ijkradio.data.Station
+import com.example.ijkradio.ui.PlaybackState
+import kotlinx.coroutines.flow.Flow
+
+/**
+ * 播放器管理接口
+ * 定义播放器的通用方法
+ */
+interface IPlayerManager {
+    
+    /**
+     * 初始化播放器
+     */
+    fun initialize()
+    
+    /**
+     * 释放播放器资源
+     */
+    fun release()
+    
+    /**
+     * 播放电台
+     */
+    fun playStation(station: Station)
+    
+    /**
+     * 暂停播放
+     */
+    fun pause()
+    
+    /**
+     * 恢复播放
+     */
+    fun resume()
+    
+    /**
+     * 停止播放
+     */
+    fun stop()
+    
+    /**
+     * 设置音量
+     */
+    fun setVolume(volume: Float)
+    
+    /**
+     * 设置硬解码
+     */
+    fun setHardwareDecode(useHardware: Boolean)
+    
+    /**
+     * 检查是否正在播放
+     */
+    fun isPlaying(): Boolean
+    
+    /**
+     * 获取当前播放的电台
+     */
+    fun getCurrentStation(): Station?
+    
+    /**
+     * 获取播放状态
+     */
+    val playbackState: Flow<PlaybackState>
+}
+```
+
+## 文件: main/java/com/example/ijkradio/ui/PlaybackState.kt
+```kt
+package com.example.ijkradio.ui
+
+/**
+ * 播放状态密封类
+ * 使用 Kotlin 密封类来表示播放器可能的各种状态
+ */
+sealed class PlaybackState {
+    /**
+     * 播放器停止状态
+     */
+    object Stopped : PlaybackState()
+
+    /**
+     * 正在缓冲状态
+     */
+    object Buffering : PlaybackState()
+
+    /**
+     * 正在播放状态
+     * @param stationName 当前播放的电台名称
+     */
+    data class Playing(val stationName: String) : PlaybackState()
+
+    /**
+     * 暂停状态
+     */
+    object Paused : PlaybackState()
+
+    /**
+     * 错误状态
+     * @param message 错误信息
+     */
+    data class Error(val message: String) : PlaybackState()
+}
+```
+
+## 文件: main/java/com/example/ijkradio/ui/StationAdapter.kt
+```kt
+package com.example.ijkradio.ui
+
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.ImageButton
+import android.widget.TextView
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
+import androidx.recyclerview.widget.RecyclerView
+import com.example.ijkradio.R
+import com.example.ijkradio.data.Station
+
+/**
+ * 电台列表适配器
+ * 使用 ListAdapter 和 DiffUtil 实现高效的列表更新
+ */
+class StationAdapter(
+    private val onStationClick: (Station) -> Unit,
+    private val onDeleteClick: (Station) -> Unit
+) : ListAdapter<Station, StationAdapter.StationViewHolder>(StationDiffCallback()) {
+
+    // 当前选中的电台ID
+    private var selectedStationId: String? = null
+
+    // 正在播放的电台ID
+    private var playingStationId: String? = null
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): StationViewHolder {
+        val view = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_station, parent, false)
+        return StationViewHolder(view)
+    }
+
+    override fun onBindViewHolder(holder: StationViewHolder, position: Int) {
+        val station = getItem(position)
+        holder.bind(station, station.id == selectedStationId, station.id == playingStationId)
+    }
+
+    /**
+     * 设置选中的电台
+     */
+    fun setSelectedStation(station: Station?) {
+        val oldSelectedId = selectedStationId
+        selectedStationId = station?.id
+
+        // 更新旧选中项
+        oldSelectedId?.let { id ->
+            currentList.indexOfFirst { it.id == id }.takeIf { it >= 0 }?.let {
+                notifyItemChanged(it)
+            }
+        }
+
+        // 更新新选中项
+        station?.id?.let { id ->
+            currentList.indexOfFirst { it.id == id }.takeIf { it >= 0 }?.let {
+                notifyItemChanged(it)
+            }
+        }
+    }
+
+    /**
+     * 设置正在播放的电台
+     */
+    fun setPlayingStation(station: Station?) {
+        val oldPlayingId = playingStationId
+        playingStationId = station?.id
+
+        // 更新旧播放项
+        oldPlayingId?.let { id ->
+            currentList.indexOfFirst { it.id == id }.takeIf { it >= 0 }?.let {
+                notifyItemChanged(it)
+            }
+        }
+
+        // 更新新播放项
+        station?.id?.let { id ->
+            currentList.indexOfFirst { it.id == id }.takeIf { it >= 0 }?.let {
+                notifyItemChanged(it)
+            }
+        }
+    }
+
+    /**
+     * 刷新列表
+     */
+    fun refreshList() {
+        notifyDataSetChanged()
+    }
+
+    /**
+     * 获取当前选中的电台
+     */
+    fun getSelectedStation(): Station? {
+        return selectedStationId?.let { id ->
+            currentList.find { it.id == id }
+        }
+    }
+
+    /**
+     * 获取指定位置的电台
+     */
+    fun getItemAt(position: Int): Station? {
+        return if (position in 0 until itemCount) getItem(position) else null
+    }
+
+    inner class StationViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        private val nameTextView: TextView = itemView.findViewById(R.id.station_name)
+        private val descriptionTextView: TextView = itemView.findViewById(R.id.station_description)
+        private val playingIndicator: View = itemView.findViewById(R.id.playing_indicator)
+
+        fun bind(station: Station, isSelected: Boolean, isPlaying: Boolean) {
+            nameTextView.text = station.name
+            descriptionTextView.text = station.getDisplayName()
+            descriptionTextView.visibility = if (station.description.isNotBlank()) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
+
+            // 设置选中状态
+            itemView.isSelected = isSelected
+
+            // 设置播放状态
+            playingIndicator.visibility = if (isPlaying) View.VISIBLE else View.GONE
+
+            // 设置背景
+            itemView.setBackgroundResource(
+                if (isSelected) R.drawable.bg_station_selected
+                else R.drawable.bg_station_normal
+            )
+
+            // 点击事件
+            itemView.setOnClickListener {
+                onStationClick(station)
+            }
+        }
+    }
+
+    /**
+     * DiffUtil 回调
+     */
+    class StationDiffCallback : DiffUtil.ItemCallback<Station>() {
+        override fun areItemsTheSame(oldItem: Station, newItem: Station): Boolean {
+            return oldItem.id == newItem.id
+        }
+
+        override fun areContentsTheSame(oldItem: Station, newItem: Station): Boolean {
+            return oldItem == newItem
+        }
+    }
+}
+```
+
+## 文件: main/java/com/example/ijkradio/utils/JsonStationLoader.kt
+```kt
+package com.example.ijkradio.utils
+
+import android.content.Context
+import com.example.ijkradio.data.Station
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+
+object JsonStationLoader {
+    fun loadFromAssets(context: Context, fileName: String = "stations.json"): List<Station> {
+        return try {
+            val inputStream = context.assets.open(fileName)
+            val reader = inputStream.bufferedReader()
+            val type = object : TypeToken<List<Station>>() {}.type
+            val stations: List<Station> = Gson().fromJson(reader, type)
+            reader.close()
+            stations
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+}
+```
+
+## 文件: main/java/com/example/ijkradio/utils/NetworkHelper.kt
+```kt
+package com.example.ijkradio.utils
+
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.net.ConnectivityManager
+import android.net.NetworkInfo
+import android.os.Build
+
+/**
+ * 网络状态监听器
+ * 用于检测网络连接状态变化
+ * 兼容API 19+，使用BroadcastReceiver替代NetworkCallback
+ */
+class NetworkHelper(private val context: Context) {
+
+    /**
+     * 网络状态监听接口
+     */
+    interface NetworkStateListener {
+        fun onNetworkAvailable()
+        fun onNetworkLost()
+    }
+
+    private var networkStateListener: NetworkStateListener? = null
+    private val connectivityManager: ConnectivityManager =
+        context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+
+    private var networkReceiver: BroadcastReceiver? = null
+    private var isRegistered = false
+
+    /**
+     * 设置网络状态监听器
+     */
+    fun setNetworkStateListener(listener: NetworkStateListener) {
+        networkStateListener = listener
+    }
+
+    /**
+     * 开始监听网络状态
+     */
+    fun startListening() {
+        // 创建广播接收器
+        networkReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                if (intent.action == ConnectivityManager.CONNECTIVITY_ACTION) {
+                    val wasConnected = isNetworkAvailable()
+                    // 延迟检查以确保网络状态已更新
+                    android.os.Handler().postDelayed({
+                        val isConnected = isNetworkAvailable()
+                        if (isConnected && !wasConnected) {
+                            networkStateListener?.onNetworkAvailable()
+                        } else if (!isConnected && wasConnected) {
+                            networkStateListener?.onNetworkLost()
+                        }
+                    }, 500)
+                }
+            }
+        }
+
+        val filter = IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION)
+        context.registerReceiver(networkReceiver, filter)
+        isRegistered = true
+    }
+
+    /**
+     * 停止监听网络状态
+     */
+    fun stopListening() {
+        if (isRegistered && networkReceiver != null) {
+            try {
+                context.unregisterReceiver(networkReceiver)
+            } catch (e: IllegalArgumentException) {
+                // Receiver not registered
+            }
+            isRegistered = false
+        }
+        networkReceiver = null
+        networkStateListener = null
+    }
+
+    /**
+     * 检查是否有网络连接
+     */
+    fun isNetworkAvailable(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val network = connectivityManager.activeNetwork ?: return false
+            val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+            capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        } else {
+            @Suppress("DEPRECATION")
+            val networkInfo = connectivityManager.activeNetworkInfo
+            networkInfo?.isConnected ?: false
+        }
+    }
+
+    /**
+     * 检查是否通过移动网络连接
+     */
+    fun isMobileNetwork(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val network = connectivityManager.activeNetwork ?: return false
+            val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+            capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR)
+        } else {
+            @Suppress("DEPRECATION")
+            val networkInfo = connectivityManager.activeNetworkInfo
+            networkInfo?.type == ConnectivityManager.TYPE_MOBILE
+        }
+    }
+
+    /**
+     * 检查是否通过WiFi连接
+     */
+    fun isWifiNetwork(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val network = connectivityManager.activeNetwork ?: return false
+            val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+            capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)
+        } else {
+            @Suppress("DEPRECATION")
+            val networkInfo = connectivityManager.activeNetworkInfo
+            networkInfo?.type == ConnectivityManager.TYPE_WIFI
+        }
+    }
+
+    /**
+     * 获取当前网络类型描述
+     */
+    fun getNetworkTypeDescription(): String {
+        return when {
+            isWifiNetwork() -> "WiFi"
+            isMobileNetwork() -> "移动网络"
+            isNetworkAvailable() -> "其他网络"
+            else -> "无网络"
+        }
+    }
+}
+```
+
+## 文件: main/AndroidManifest.xml
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 网络权限 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.IjkRadioPlayer"
+        android:usesCleartextTraffic="true"
+        tools:targetApi="31">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.IjkRadioPlayer">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+    </application>
+
+</manifest>
+```
+
+## 文件: main/res/layout/activity_main.xml
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background"
+    tools:context=".MainActivity">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <!-- 主内容区 -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <!-- 电台列表 -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/stations_recycler_view"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:padding="8dp"
+                tools:listitem="@layout/item_station" />
+
+            <!-- 空状态视图 -->
+            <TextView
+                android:id="@+id/empty_view"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:gravity="center"
+                android:text="@string/empty_stations"
+                android:textColor="@color/text_secondary"
+                android:textSize="16sp"
+                android:visibility="gone"
+                tools:visibility="visible" />
+
+        </FrameLayout>
+
+        <!-- 播放控制栏 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@color/colorSurface"
+            android:elevation="8dp"
+            android:orientation="horizontal"
+            android:padding="16dp">
+
+            <!-- 设置按钮 -->
+            <ImageButton
+                android:id="@+id/settings_button"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:contentDescription="@string/settings"
+                android:src="@drawable/ic_settings"
+                app:tint="@color/colorPrimary"
+                android:background="?attr/selectableItemBackgroundBorderless" />
+
+            <!-- 添加电台按钮 -->
+            <ImageButton
+                android:id="@+id/add_station_button"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:contentDescription="@string/add_station"
+                android:src="@drawable/ic_add"
+                app:tint="@color/colorPrimary"
+                android:background="?attr/selectableItemBackgroundBorderless" />
+
+            <!-- 状态文本 -->
+            <TextView
+                android:id="@+id/status_text_view"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
+                android:layout_marginStart="8dp"
+                android:text="@string/status_stopped"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp" />
+
+            <!-- 播放按钮 -->
+            <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/play_pause_button"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:contentDescription="@string/play_pause"
+                android:src="@drawable/ic_play"
+                app:backgroundTint="@color/colorPrimary"
+                app:fabSize="normal"
+                app:tint="@android:color/white" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>
+```
+
+================================================================================
+XML文件内容
+================================================================================
+
+## 文件: main/res/drawable/bg_station_normal.xml
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@android:color/white" />
+    <corners android:radius="8dp" />
+</shape>
+```
+
+## 文件: main/res/drawable/bg_station_selected.xml
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/selected_background" />
+    <corners android:radius="8dp" />
+    <stroke
+        android:width="2dp"
+        android:color="@color/colorPrimary" />
+</shape>
+```
+
+## 文件: main/res/drawable/dialog_background.xml
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@android:color/white" />
+    <corners android:radius="16dp" />
+</shape>
+```
+
+## 文件: main/res/drawable/ic_add.xml
+```xml
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M19,13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+</vector>
+```
+
+## 文件: main/res/drawable/ic_delete.xml
+```xml
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M6,19c0,1.1 0.9,2 2,2h8c1.1,0 2,-0.9 2,-2V7H6v12zM19,4h-3.5l-1,-1h-5l-1,1H5v2h14V4z"/>
+</vector>
+```
+
+## 文件: main/res/drawable/ic_launcher_background.xml
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#6200EE"/>
+</shape>
+```
+
+## 文件: main/res/drawable/ic_launcher_foreground.xml
+```xml
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#6200EE"
+        android:pathData="M0,0h108v108h-108z"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,30c-13.26,0 -24,10.74 -24,24s10.74,24 24,24s24,-10.74 24,-24S67.26,30 54,30zM54,72c-9.94,0 -18,-8.06 -18,-18s8.06,-18 18,-18s18,8.06 18,18S63.94,72 54,72z"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M48,46v16l14,-8z"/>
+</vector>
+```
+
+## 文件: main/res/drawable/ic_pause.xml
+```xml
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M6,19h4L10,5L6,5v14zM14,5v14h4L18,5h-4z"/>
+</vector>
+```
+
+## 文件: main/res/drawable/ic_play.xml
+```xml
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M8,5v14l11,-7z"/>
+</vector>
+```
+
+## 文件: main/res/drawable/ic_settings.xml
+```xml
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorOnSurface">
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M19.14,12.94c0.04,-0.3 0.06,-0.61 0.06,-0.94 0,-0.32 -0.02,-0.64 -0.07,-0.94l2.03,-1.58c0.18,-0.14 0.23,-0.41 0.12,-0.61l-1.92,-3.32c-0.12,-0.22 -0.37,-0.29 -0.59,-0.22l-2.39,0.96c-0.5,-0.38 -1.03,-0.7 -1.62,-0.94L14.4,2.81c-0.04,-0.24 -0.24,-0.41 -0.48,-0.41h-3.84c-0.24,0 -0.43,0.17 -0.47,0.41L9.25,5.35C8.66,5.59 8.12,5.92 7.63,6.29L5.24,5.33c-0.22,-0.08 -0.47,0 -0.59,0.22L2.74,8.87C2.62,9.08 2.66,9.34 2.86,9.48l2.03,1.58C4.84,11.36 4.8,11.69 4.8,12s0.02,0.64 0.07,0.94l-2.03,1.58c-0.18,0.14 -0.23,0.41 -0.12,0.61l1.92,3.32c0.12,0.22 0.37,0.29 0.59,0.22l2.39,-0.96c0.5,0.38 1.03,0.7 1.62,0.94l0.36,2.54c0.05,0.24 0.24,0.41 0.48,0.41h3.84c0.24,0 0.44,-0.17 0.47,-0.41l0.36,-2.54c0.59,-0.24 1.13,-0.56 1.62,-0.94l2.39,0.96c0.22,0.08 0.47,0 0.59,-0.22l1.92,-3.32c0.12,-0.22 0.07,-0.47 -0.12,-0.61L19.14,12.94zM12,15.6c-1.98,0 -3.6,-1.62 -3.6,-3.6s1.62,-3.6 3.6,-3.6s3.6,1.62 3.6,3.6S13.98,15.6 12,15.6z"/>
+</vector>
+```
+
+## 文件: main/res/drawable/ic_volume_down.xml
+```xml
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M18.5,12c0,-1.77 -1.02,-3.29 -2.5,-4.03v8.05c1.48,-0.73 2.5,-2.25 2.5,-4.02zM5,9v6h4l5,5V4L9,9H5z"/>
+</vector>
+```
+
+## 文件: main/res/drawable/ic_volume_off.xml
+```xml
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M16.5,12c0,-1.77 -1.02,-3.29 -2.5,-4.03v2.21l2.45,2.45c0.03,-0.2 0.05,-0.41 0.05,-0.63zM19,12c0,0.94 -0.2,1.82 -0.54,2.64l1.51,1.51C20.63,14.91 21,13.5 21,12c0,-4.28 -2.99,-7.86 -7,-8.77v2.06c2.89,0.86 5,3.54 5,6.71zM4.27,3L3,4.27 7.73,9H3v6h4l5,5v-6.73l4.25,4.25c-0.67,0.52 -1.42,0.93 -2.25,1.18v2.06c1.38,-0.31 2.63,-0.95 3.69,-1.81L19.73,21 21,19.73l-9,-9L4.27,3zM12,4L9.91,6.09 12,8.18V4z"/>
+</vector>
+```
+
+## 文件: main/res/drawable/ic_volume_up.xml
+```xml
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M3,9v6h4l5,5V4L7,9H3zM16.5,12c0,-1.77 -1.02,-3.29 -2.5,-4.03v8.05c1.48,-0.73 2.5,-2.25 2.5,-4.02zM14,3.23v2.06c2.89,0.86 5,3.54 5,6.71s-2.11,5.85 -5,6.71v2.06c4.01,-0.91 7,-4.49 7,-8.77s-2.99,-7.86 -7,-8.77z"/>
+</vector>
+```
+
+## 文件: main/res/layout/dialog_add_station.xml
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <!-- 电台名称 -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/station_name_hint"
+        app:boxBackgroundMode="outline"
+        app:boxCornerRadiusBottomEnd="4dp"
+        app:boxCornerRadiusBottomStart="4dp"
+        app:boxCornerRadiusTopEnd="4dp"
+        app:boxCornerRadiusTopStart="4dp">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/station_name_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="text"
+            android:maxLines="1" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <!-- 电台URL -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:hint="@string/station_url_hint"
+        app:boxBackgroundMode="outline"
+        app:boxCornerRadiusBottomEnd="4dp"
+        app:boxCornerRadiusBottomStart="4dp"
+        app:boxCornerRadiusTopEnd="4dp"
+        app:boxCornerRadiusTopStart="4dp"
+        app:helperText="@string/station_url_helper"
+        app:helperTextEnabled="true">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/station_url_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="textUri"
+            android:maxLines="1" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <!-- 电台描述（可选） -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:hint="@string/station_description_hint"
+        app:boxBackgroundMode="outline"
+        app:boxCornerRadiusBottomEnd="4dp"
+        app:boxCornerRadiusBottomStart="4dp"
+        app:boxCornerRadiusTopEnd="4dp"
+        app:boxCornerRadiusTopStart="4dp"
+        app:helperText="@string/optional"
+        app:helperTextEnabled="true">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/station_description_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="text"
+            android:maxLines="1" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+</LinearLayout>
+```
+
+## 文件: main/res/layout/dialog_settings.xml
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:background="@drawable/dialog_background">
+
+    <!-- 音量调节 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginBottom="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="音量调节"
+            android:textSize="16sp"
+            android:textColor="@color/text_primary"
+            android:layout_marginBottom="12dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/volume_icon"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:contentDescription="音量图标"
+                android:src="@drawable/ic_volume_up"
+                app:tint="@color/colorPrimary" />
+
+            <com.google.android.material.slider.Slider
+                android:id="@+id/volume_slider"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:value="1.0"
+                android:valueFrom="0.0"
+                android:valueTo="1.0"
+                app:labelBehavior="gone"
+                app:thumbColor="@color/colorPrimary"
+                app:trackColorActive="@color/colorPrimary"
+                app:trackColorInactive="@color/divider" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- 播放器引擎 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginBottom="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="播放器引擎"
+            android:textSize="16sp"
+            android:textColor="@color/text_primary"
+            android:layout_marginBottom="12dp" />
+
+        <RadioGroup
+            android:id="@+id/player_engine_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <RadioButton
+                android:id="@+id/radio_exo"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="ExoPlayer"
+                android:checked="true" />
+
+            <RadioButton
+                android:id="@+id/radio_ijk"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="IjkPlayer" />
+
+        </RadioGroup>
+
+    </LinearLayout>
+
+    <!-- 解码方式 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="解码方式"
+            android:textSize="16sp"
+            android:textColor="@color/text_primary"
+            android:layout_marginBottom="12dp" />
+
+        <RadioGroup
+            android:id="@+id/decode_mode_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <RadioButton
+                android:id="@+id/radio_hardware"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="硬解码"
+                android:checked="true" />
+
+            <RadioButton
+                android:id="@+id/radio_software"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="软解码" />
+
+        </RadioGroup>
+
+    </LinearLayout>
+
+    <!-- 自动播放 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginTop="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="自动播放"
+            android:textSize="16sp"
+            android:textColor="@color/text_primary"
+            android:layout_marginBottom="12dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="自动播放电台"
+                android:textSize="14sp"
+                android:textColor="@color/text_secondary" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/auto_play_switch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="true"
+                app:thumbTint="@color/colorPrimary" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- 自动播放上一次电台 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginTop="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="启动设置"
+            android:textSize="16sp"
+            android:textColor="@color/text_primary"
+            android:layout_marginBottom="12dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="自动播放上一次播放的电台"
+                android:textSize="14sp"
+                android:textColor="@color/text_secondary" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/auto_play_last_station_switch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="true"
+                app:thumbTint="@color/colorPrimary" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</LinearLayout>
+```
+
+## 文件: main/res/layout/item_station.xml
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="8dp"
+    android:layout_marginVertical="4dp"
+    android:foreground="?attr/selectableItemBackground"
+    app:cardCornerRadius="8dp"
+    app:cardElevation="2dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="12dp">
+
+        <!-- 播放指示器 -->
+        <View
+            android:id="@+id/playing_indicator"
+            android:layout_width="4dp"
+            android:layout_height="40dp"
+            android:layout_marginEnd="12dp"
+            android:background="@color/colorPrimary"
+            android:visibility="gone"
+            tools:visibility="visible" />
+
+        <!-- 电台信息 -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/station_name"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/text_primary"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                tools:text="BBC World Service" />
+
+            <TextView
+                android:id="@+id/station_description"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp"
+                android:visibility="gone"
+                tools:text="BBC 国际广播"
+                tools:visibility="visible" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</androidx.cardview.widget.CardView>
+```
+
+## 文件: main/res/mipmap-anydpi-v26/ic_launcher.xml
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background"/>
+    <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+</adaptive-icon>
+```
+
+## 文件: main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background"/>
+    <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+</adaptive-icon>
+```
+
+## 文件: main/res/values/colors.xml
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 主题颜色 -->
+    <color name="colorPrimary">#6200EE</color>
+    <color name="colorPrimaryDark">#3700B3</color>
+    <color name="colorPrimaryVariant">#3700B3</color>
+    <color name="colorSecondary">#03DAC6</color>
+    <color name="colorSecondaryVariant">#018786</color>
+
+    <!-- 背景和表面 -->
+    <color name="background">#F5F5F5</color>
+    <color name="colorSurface">#FFFFFF</color>
+    <color name="network_status_background">#FF9800</color>
+
+    <!-- 文字颜色 -->
+    <color name="text_primary">#212121</color>
+    <color name="text_secondary">#757575</color>
+
+    <!-- 其他 -->
+    <color name="divider">#E0E0E0</color>
+    <color name="error">#B00020</color>
+    <color name="selected_background">#E8E0F0</color>
+
+    <!-- 状态栏颜色 -->
+    <color name="status_bar_color">#3700B3</color>
+</resources>
+```
+
+## 文件: main/res/values/strings.xml
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">网络电台</string>
+
+    <!-- 状态文本 -->
+    <string name="status_stopped">已停止</string>
+    <string name="status_buffering">正在缓冲…</string>
+    <string name="status_playing">正在播放: %1$s</string>
+    <string name="status_paused">已暂停</string>
+    <string name="status_error">错误: %1$s</string>
+
+    <!-- 按钮和控件 -->
+    <string name="play_pause">播放/暂停</string>
+    <string name="add_station">添加电台</string>
+    <string name="delete_station">删除电台</string>
+    <string name="volume_icon">音量</string>
+
+    <!-- 对话框 -->
+    <string name="dialog_add_station_title">添加电台</string>
+    <string name="dialog_delete_title">删除电台</string>
+    <string name="dialog_delete_message">确定要删除电台 \"%1$s\" 吗？</string>
+    <string name="dialog_add">添加</string>
+    <string name="dialog_delete">删除</string>
+    <string name="dialog_cancel">取消</string>
+
+    <!-- 输入提示 -->
+    <string name="station_name_hint">电台名称</string>
+    <string name="station_url_hint">电台URL</string>
+    <string name="station_description_hint">电台描述</string>
+    <string name="station_url_helper">支持 http:// 和 https:// 协议</string>
+    <string name="optional">可选</string>
+
+    <!-- 错误提示 -->
+    <string name="error_invalid_input">请输入有效的电台名称和URL</string>
+    <string name="error_invalid_station">无效的电台信息</string>
+
+    <!-- 成功提示 -->
+    <string name="station_added">电台添加成功</string>
+    <string name="station_deleted">电台已删除</string>
+
+    <!-- 网络状态 -->
+    <string name="network_status">网络: %1$s</string>
+    <string name="network_available">网络已连接</string>
+    <string name="network_lost">网络连接已断开</string>
+
+    <!-- 空状态 -->
+    <string name="empty_stations">暂无电台\n点击右下角按钮添加</string>
+
+    <!-- 设置 -->
+    <string name="settings">设置</string>
+</resources>
+```
+
+## 文件: main/res/values/themes.xml
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- 基础应用主题 -->
+    <style name="Theme.IjkRadioPlayer" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+        <!-- 主颜色 -->
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorPrimaryVariant">@color/colorPrimaryVariant</item>
+
+        <!-- 次要颜色 -->
+        <item name="colorSecondary">@color/colorSecondary</item>
+        <item name="colorSecondaryVariant">@color/colorSecondaryVariant</item>
+
+        <!-- 背景和表面 -->
+        <item name="android:colorBackground">@color/background</item>
+        <item name="colorSurface">@color/colorSurface</item>
+
+        <!-- 错误颜色 -->
+        <item name="colorError">@color/error</item>
+
+        <!-- 状态栏 -->
+        <item name="android:statusBarColor">@color/status_bar_color</item>
+
+        <!-- 导航栏 -->
+        <item name="android:navigationBarColor">@color/colorPrimaryDark</item>
+
+        <!-- ActionBar -->
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+    </style>
+
+    <!-- 对话框主题 -->
+    <style name="Theme.IjkRadioPlayer.Dialog" parent="ThemeOverlay.MaterialComponents.Dialog.Alert">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorSecondary">@color/colorSecondary</item>
+    </style>
+
+</resources>
+```
+
