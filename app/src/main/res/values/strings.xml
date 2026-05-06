@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">网络电台</string>
+
+    <!-- 状态文本 -->
+    <string name="status_stopped">已停止</string>
+    <string name="status_buffering">正在缓冲…</string>
+    <string name="status_playing">正在播放: %1$s</string>
+    <string name="status_paused">已暂停</string>
+    <string name="status_error">错误: %1$s</string>
+
+    <!-- 按钮和控件 -->
+    <string name="play_pause">播放/暂停</string>
+    <string name="previous_station">上一个电台</string>
+    <string name="next_station">下一个电台</string>
+    <string name="add_station">添加电台</string>
+    <string name="delete_station">删除电台</string>
+    <string name="volume_icon">音量</string>
+
+    <!-- 对话框 -->
+    <string name="dialog_add_station_title">添加电台</string>
+    <string name="dialog_delete_title">删除电台</string>
+    <string name="dialog_delete_message">确定要删除电台 \"%1$s\" 吗？</string>
+    <string name="dialog_add">添加</string>
+    <string name="dialog_delete">删除</string>
+    <string name="dialog_cancel">取消</string>
+
+    <!-- 输入提示 -->
+    <string name="station_name_hint">电台名称</string>
+    <string name="station_url_hint">电台URL</string>
+    <string name="station_description_hint">电台描述</string>
+    <string name="station_url_helper">支持 http:// 和 https:// 协议</string>
+    <string name="optional">可选</string>
+
+    <!-- 错误提示 -->
+    <string name="error_invalid_input">请输入有效的电台名称和URL</string>
+    <string name="error_invalid_station">无效的电台信息</string>
+
+    <!-- 成功提示 -->
+    <string name="station_added">电台添加成功</string>
+    <string name="station_deleted">电台已删除</string>
+
+    <!-- 网络状态 -->
+    <string name="network_status">网络: %1$s</string>
+    <string name="network_available">网络已连接</string>
+    <string name="network_lost">网络连接已断开</string>
+
+    <!-- 空状态 -->
+    <string name="empty_stations">暂无电台</string>
+    <string name="tap_add_hint">点击下方按钮添加电台</string>
+
+    <!-- 设置 -->
+    <string name="settings">设置</string>
+
+    <!-- 全屏播放 -->
+    <string name="exit_fullscreen">退出全屏</string>
+    <string name="album_art">专辑封面</string>
+    <string name="select_station_hint">请选择一个电台开始播放</string>
+    <string name="now_playing">正在播放</string>
+    <string name="buffering">缓冲中…</string>
+    <string name="unknown_track">未知曲目</string>
+    <string name="network_usage">流量: %1$s</string>
+    <string name="import_m3u_title">导入M3U播放列表</string>
+    <string name="import_m3u_success">成功导入 %1$d 个电台</string>
+    <string name="import_m3u_failed">导入失败: %1$s</string>
+    <string name="import_m3u_no_valid">未找到有效的电台信息</string>
+    <string name="import_m3u_select_file">导入M3U文件</string>
+    <string name="export_m3u_title">导出M3U文件</string>
+    <string name="export_m3u_success">成功导出 %1$d 个电台</string>
+    <string name="export_m3u_failed">导出失败: %1$s</string>
+</resources>

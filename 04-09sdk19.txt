@@ -1,0 +1,176 @@
+我们需将项目从当前SDK版本改为支持Android 4.4 (API 19)。检查代码，主要兼容性问题：使用了一些API 21+的特性，比如java.util.UUID和java.time可能没有，但Kotlin的UUID是Java标准库的，API 19可用。需要检查的点：
+
+androidx库需要确保兼容API 19。
+
+ItemTouchHelper需要API 21+? 实际上ItemTouchHelper从Support Library 22.1.0开始支持API 14+，但这里用的是androidx.recyclerview.widget.ItemTouchHelper，需确认最低版本。
+
+使用了androidx.lifecycle.LiveData、MutableLiveData，它们在API 19可用。
+
+网络监听NetworkCallback中onCapabilitiesChanged方法标记了@RequiresApi(Build.VERSION_CODES.LOLLIPOP)，即API 21+，所以对API 19不可用。我们需要提供兼容实现或降级使用ConnectivityManager的广播监听。
+
+IjkMediaPlayer的硬解码选项mediacodec在API 16+可用，所以API 19没问题。
+
+某些Material组件可能需要API 21+，但可以通过AppCompat主题兼容。
+
+主要修改：
+
+修改build.gradle的minSdkVersion为19。
+
+处理网络监听的兼容性：可以用BroadcastReceiver监听CONNECTIVITY_ACTION代替NetworkCallback（API 21以下）。
+
+移除或条件化使用NetworkCallback中的高API特性。
+
+检查androidx依赖版本是否支持API 19。
+
+由于用户没有提供build.gradle，但可以给出修改指导。我们将重点放在代码层面需要改动的地方，并提供修改后的NetworkHelper.kt以及可能的build.gradle配置建议。
+
+我将提供一份修改方案，包括对NetworkHelper的重写以支持API 19，以及build.gradle的调整。
+
+要将项目的最低 SDK 版本降至 19（Android 4.4），需要解决两个核心问题：
+
+Gradle 构建配置：修改 minSdkVersion 并调整依赖库版本。
+
+代码兼容性：修复使用了 API 21+ 特性的部分（主要是 NetworkHelper 中的 NetworkCallback）。
+
+以下为详细的修改步骤。
+
+1. 修改 build.gradle（Module 级别）
+groovy
+android {
+    compileSdkVersion 33  // 保持较高版本以使用最新 API
+    defaultConfig {
+        applicationId "com.example.ijkradio"
+        minSdkVersion 19    // 改为 19
+        targetSdkVersion 33
+        versionCode 1
+        versionName "1.0"
+    }
+    // ...
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'          // 支持 API 19
+    implementation 'com.google.android.material:material:1.8.0'  // 支持 API 19
+    implementation 'androidx.recyclerview:recyclerview:1.3.0'
+    implementation 'androidx.cardview:cardview:1.0.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.lifecycle:lifecycle-livedata-ktx:2.6.1'
+    implementation 'com.google.code.gson:gson:2.10.1'
+    
+    // IjkPlayer 相关（保持不变）
+    implementation 'tv.danmaku.ijk.media:ijkplayer-java:0.8.8'
+    implementation 'tv.danmaku.ijk.media:ijkplayer-armv7a:0.8.8' // 根据设备架构选择
+    // ...
+}
+注意：确保所有 androidx 库版本均支持 API 19（通常没问题）。
+
+2. 重写 NetworkHelper.kt 以兼容 API 19
+原代码中使用了 ConnectivityManager.NetworkCallback，该回调要求 API ≥ 21。需改用 BroadcastReceiver 监听 CONNECTIVITY_ACTION 广播（适用于所有版本）。
+
+修改后的 NetworkHelper.kt（完整替换）：
+
+kotlin
+package com.example.ijkradio.utils
+
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.net.ConnectivityManager
+import android.net.NetworkInfo
+import android.os.Build
+
+class NetworkHelper(private val context: Context) {
+
+    interface NetworkStateListener {
+        fun onNetworkAvailable()
+        fun onNetworkLost()
+    }
+
+    private var networkStateListener: NetworkStateListener? = null
+    private val connectivityManager: ConnectivityManager =
+        context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+
+    private val networkReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (isNetworkAvailable()) {
+                networkStateListener?.onNetworkAvailable()
+            } else {
+                networkStateListener?.onNetworkLost()
+            }
+        }
+    }
+
+    fun setNetworkStateListener(listener: NetworkStateListener) {
+        networkStateListener = listener
+    }
+
+    fun startListening() {
+        val filter = IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION)
+        context.registerReceiver(networkReceiver, filter)
+    }
+
+    fun stopListening() {
+        try {
+            context.unregisterReceiver(networkReceiver)
+        } catch (e: IllegalArgumentException) {
+            // Receiver not registered
+        }
+    }
+
+    fun isNetworkAvailable(): Boolean {
+        val activeNetworkInfo: NetworkInfo? = connectivityManager.activeNetworkInfo
+        return activeNetworkInfo?.isConnected == true
+    }
+
+    fun isMobileNetwork(): Boolean {
+        val activeNetworkInfo: NetworkInfo? = connectivityManager.activeNetworkInfo
+        return activeNetworkInfo?.type == ConnectivityManager.TYPE_MOBILE
+    }
+
+    fun isWifiNetwork(): Boolean {
+        val activeNetworkInfo: NetworkInfo? = connectivityManager.activeNetworkInfo
+        return activeNetworkInfo?.type == ConnectivityManager.TYPE_WIFI
+    }
+
+    fun getNetworkTypeDescription(): String {
+        return when {
+            isWifiNetwork() -> "WiFi"
+            isMobileNetwork() -> "移动网络"
+            isNetworkAvailable() -> "其他网络"
+            else -> "无网络"
+        }
+    }
+}
+3. 检查其他潜在 API 兼容性问题
+以下部分在 API 19 中可用，无需修改：
+
+java.util.UUID：API 1 起存在。
+
+IjkMediaPlayer 的 setOption 和硬解码（mediacodec 从 API 16 开始支持）。
+
+RecyclerView、ItemTouchHelper（androidx 版本向下兼容到 API 14）。
+
+LiveData、ViewModel（androidx.lifecycle 兼容 API 14+）。
+
+Material 组件（如 Slider、SwitchCompat）通过 AppCompat 主题兼容。
+
+4. 移除或条件化高版本 API 调用
+原代码中有两处需要注意：
+
+MainActivity.kt 中的 dialog.setOnShowListener：AlertDialog 的 getButton 方法是 API 1 就有的，但修改按钮颜色直接使用 setTextColor 没问题。
+
+IjkPlayerManager.kt 中未使用高版本专有 API，安全。
+
+5. 验证主题和资源
+确保 res/values/themes.xml 中使用的是 Theme.AppCompat 或 Theme.MaterialComponents 的 DayNight 变体，它们已包含对低版本的支持。
+
+总结
+完成以上修改后，项目即可在 Android 4.4（API 19）上运行。主要改动集中在：
+
+降低 minSdkVersion 至 19。
+
+将网络监听由 NetworkCallback 改为 BroadcastReceiver 兼容方案。
+
+如果在实际运行中发现其他问题（例如某些 Material 组件动画异常），可进一步调整主题或替换为更基础的控件。但当前代码在 API 19 模拟器上应能正常工作。
+

@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- 基础应用主题 - 现代化的Material Design风格 -->
+    <style name="Theme.IjkRadioPlayer" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+        <!-- 主颜色 -->
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorPrimaryVariant">@color/colorPrimaryVariant</item>
+
+        <!-- 次要颜色 -->
+        <item name="colorSecondary">@color/colorSecondary</item>
+        <item name="colorSecondaryVariant">@color/colorSecondaryVariant</item>
+
+        <!-- 背景和表面 -->
+        <item name="android:colorBackground">@color/background</item>
+        <item name="colorSurface">@color/colorSurface</item>
+
+        <!-- 强调色 -->
+        <item name="colorAccent">@color/colorAccent</item>
+
+        <!-- 错误颜色 -->
+        <item name="colorError">@color/error</item>
+
+        <!-- 状态栏 -->
+        <item name="android:statusBarColor">@color/status_bar_color</item>
+
+        <!-- 导航栏 -->
+        <item name="android:navigationBarColor">@color/navigationBarColor</item>
+
+        <!-- ActionBar -->
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+
+        <!-- 播放器相关属性 -->
+        <item name="colorPlayerBackground">@color/colorPlayerBackground</item>
+        <item name="colorPlayerShadow">@color/colorPlayerShadow</item>
+    </style>
+
+    <!-- 对话框主题 -->
+    <style name="Theme.IjkRadioPlayer.Dialog" parent="ThemeOverlay.MaterialComponents.Dialog.Alert">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorSecondary">@color/colorSecondary</item>
+        <item name="android:windowBackground">@color/colorSurface</item>
+    </style>
+
+    <!-- 卡片样式 -->
+    <style name="StationCardStyle" parent="Widget.MaterialComponents.CardView">
+        <item name="cardCornerRadius">12dp</item>
+        <item name="cardElevation">2dp</item>
+        <item name="strokeWidth">0dp</item>
+    </style>
+
+    <!-- 播放按钮样式 -->
+    <style name="PlayButtonStyle">
+        <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
+        <item name="android:scaleType">fitCenter</item>
+        <item name="android:padding">8dp</item>
+    </style>
+
+    <!-- 标题文字样式 -->
+    <style name="TitleTextStyle">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <!-- 副标题文字样式 -->
+    <style name="SubtitleTextStyle">
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
+    <!-- 圆形样式 -->
+    <style name="Circle" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">50%</item>
+    </style>
+
+</resources>

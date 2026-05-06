@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 主题颜色 - 采用radiodroid的现代配色 -->
+    <color name="colorPrimary">#125688</color>
+    <color name="colorPrimaryDark">#0D3E60</color>
+    <color name="colorPrimaryVariant">#1A75B8</color>
+    <color name="colorSecondary">#03DAC6</color>
+    <color name="colorSecondaryVariant">#018786</color>
+
+    <!-- 强调色 -->
+    <color name="colorAccent">#1d6293</color>
+    <color name="colorTabUnderline">#e0347f</color>
+
+    <!-- 背景和表面 -->
+    <color name="background">#FAFAFA</color>
+    <color name="colorSurface">#FFFFFF</color>
+    <color name="network_status_background">#FF9800</color>
+
+    <!-- 播放器背景色 -->
+    <color name="colorPlayerBackground">#FFFFFF</color>
+    <color name="colorPlayerShadow">#E5E5E5</color>
+
+    <!-- 文字颜色 -->
+    <color name="text_primary">#212121</color>
+    <color name="text_secondary">#757575</color>
+    <color name="textColorSecondary">#777777</color>
+
+    <!-- 其他 -->
+    <color name="divider">#E0E0E0</color>
+    <color name="error">#B00020</color>
+    <color name="selected_background">#E8E0F0</color>
+
+    <!-- 标签背景色 -->
+    <color name="tagBackgroundColor">#E0E0E0</color>
+
+    <!-- 菜单颜色 -->
+    <color name="menuTextColor">#212121</color>
+    <color name="menuBottomBackgroundColor">#125688</color>
+
+    <!-- 状态栏颜色 -->
+    <color name="status_bar_color">#0D3E60</color>
+    <color name="navigationBarColor">#000000</color>
+
+    <!-- 播放指示器颜色 -->
+    <color name="playingIndicator">#125688</color>
+    <color name="startRecordingColor">#FF3333</color>
+</resources>
