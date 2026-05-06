@@ -1,6 +1,7 @@
 package com.example.ijkradio
 
 import android.app.AlertDialog
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -13,6 +14,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
+import androidx.multidex.MultiDex
 import kotlinx.coroutines.launch
 import androidx.recyclerview.widget.ItemTouchHelper
 import com.example.ijkradio.data.Station
@@ -98,6 +100,11 @@ class MainActivity : AppCompatActivity() {
                 enterFullscreenMode()
             }, 300)
         }
+    }
+
+    override fun attachBaseContext(newBase: Context?) {
+        super.attachBaseContext(newBase)
+        MultiDex.install(this)
     }
 
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
