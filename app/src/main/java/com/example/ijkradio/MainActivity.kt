@@ -508,6 +508,7 @@ class MainActivity : AppCompatActivity() {
         val autoPlaySwitch = dialogView.findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.auto_play_switch)
         val autoPlayLastStationSwitch = dialogView.findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.auto_play_last_station_switch)
         val autoFullscreenSwitch = dialogView.findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.auto_fullscreen_switch)
+        val fullscreenDisplayModeGroup = dialogView.findViewById<RadioGroup>(R.id.fullscreen_display_mode_group)
         val importM3uButton = dialogView.findViewById<Button>(R.id.button_import_m3u)
         val exportM3uButton = dialogView.findViewById<Button>(R.id.button_export_m3u)
 
@@ -535,6 +536,14 @@ class MainActivity : AppCompatActivity() {
 
         // 初始化自动全屏播放开关
         autoFullscreenSwitch.isChecked = stationStorage.getAutoFullscreenOnStart()
+
+        // 初始化全屏显示模式
+        val currentDisplayMode = stationStorage.getFullscreenDisplayMode()
+        when (currentDisplayMode) {
+            1 -> fullscreenDisplayModeGroup.check(R.id.radio_mode_portrait)
+            2 -> fullscreenDisplayModeGroup.check(R.id.radio_mode_landscape)
+            else -> fullscreenDisplayModeGroup.check(R.id.radio_mode_original)
+        }
 
         // 音量滑块监听器
         volumeSlider.addOnChangeListener { slider: Slider, value: Float, fromUser: Boolean ->
@@ -589,6 +598,14 @@ class MainActivity : AppCompatActivity() {
 
                 // 保存硬解码设置
                 stationStorage.saveUseHardwareDecode(useHardwareDecode)
+
+                // 保存全屏显示模式
+                val selectedMode = when (fullscreenDisplayModeGroup.checkedRadioButtonId) {
+                    R.id.radio_mode_portrait -> 1
+                    R.id.radio_mode_landscape -> 2
+                    else -> 0
+                }
+                stationStorage.saveFullscreenDisplayMode(selectedMode)
 
                 // 如果引擎发生变化，切换播放器
                 if (useExoPlayerNew != oldUseExoPlayer) {
@@ -813,14 +830,20 @@ class MainActivity : AppCompatActivity() {
                     return true
                 }
                 KeyEvent.KEYCODE_BACK -> {
-                    toggleMode()
+                    exitFullscreenMode()
                     return true
                 }
             }
         } else {
             when (keyCode) {
                 KeyEvent.KEYCODE_BACK -> {
-                    toggleMode()
+                    moveTaskToBack(true)
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    if (selectedStation != null) {
+                        enterFullscreenMode()
+                    }
                     return true
                 }
             }
@@ -933,7 +956,9 @@ class MainActivity : AppCompatActivity() {
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
+        val displayMode = stationStorage.getFullscreenDisplayMode()
         fullscreenFragment = PlayerFullscreenFragment.newInstance().apply {
+            setDisplayMode(displayMode)
             setPlayerFullscreenListener(object : PlayerFullscreenFragment.PlayerFullscreenListener {
                 override fun onExitFullscreen() {
                     exitFullscreenMode()

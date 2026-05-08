@@ -28,6 +28,7 @@ class PlayerFullscreenFragment : Fragment() {
     private var playerManager: IPlayerManager? = null
     private var currentStation: Station? = null
     private var isPlaying = false
+    private var displayMode: Int = 0
 
     private var isViewReady = false
     private var pendingStation: Station? = null
@@ -42,12 +43,21 @@ class PlayerFullscreenFragment : Fragment() {
         this.listener = listener
     }
 
+    fun setDisplayMode(mode: Int) {
+        this.displayMode = mode
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
-        return inflater.inflate(R.layout.layout_player_fullscreen, container, false)
+        val layoutRes = when (displayMode) {
+            1 -> R.layout.layout_player_fullscreen_portrait
+            2 -> R.layout.layout_player_fullscreen_landscape
+            else -> R.layout.layout_player_fullscreen
+        }
+        return inflater.inflate(layoutRes, container, false)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {

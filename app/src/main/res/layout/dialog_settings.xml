@@ -158,6 +158,44 @@
 
     </LinearLayout>
 
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:text="全屏播放显示方案"
+        android:textSize="14sp"
+        android:textColor="@color/text_secondary" />
+
+    <RadioGroup
+        android:id="@+id/fullscreen_display_mode_group"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginTop="8dp">
+
+        <RadioButton
+            android:id="@+id/radio_mode_original"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingVertical="8dp"
+            android:text="原显示方案" />
+
+        <RadioButton
+            android:id="@+id/radio_mode_portrait"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingVertical="8dp"
+            android:text="竖屏垂直居中方案" />
+
+        <RadioButton
+            android:id="@+id/radio_mode_landscape"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingVertical="8dp"
+            android:text="横屏左右分栏方案" />
+
+    </RadioGroup>
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/colorPrimaryDark"
+    android:gravity="center"
+    android:orientation="vertical">
+
+    <TextView
+        android:id="@+id/textViewStationName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="48dp"
+        android:gravity="center"
+        android:paddingStart="32dp"
+        android:paddingEnd="32dp"
+        android:textSize="24sp"
+        android:textColor="#FFFFFF"
+        android:textStyle="bold"
+        tools:text="AsiaFM高清音乐台" />
+
+    <TextView
+        android:id="@+id/textViewGeneralInfo"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center"
+        android:paddingStart="32dp"
+        android:paddingEnd="32dp"
+        android:textSize="18sp"
+        android:textColor="#B0BEC5"
+        tools:text="汪峰 - 生来彷徨" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <com.google.android.material.imageview.ShapeableImageView
+        android:id="@+id/stationIcon"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginStart="32dp"
+        android:layout_marginEnd="32dp"
+        android:layout_weight="0.6"
+        android:contentDescription="@string/select_station_hint"
+        android:elevation="8dp"
+        android:scaleType="centerCrop"
+        app:shapeAppearanceOverlay="@style/Circle"
+        app:srcCompat="@drawable/ic_default_station_image_180dp" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="#40000000"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingStart="32dp"
+        android:paddingTop="16dp"
+        android:paddingEnd="32dp"
+        android:paddingBottom="16dp">
+
+        <ImageButton
+            android:id="@+id/buttonPrev"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/previous_station"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_skip_previous"
+            app:tint="#FFFFFF" />
+
+        <ImageButton
+            android:id="@+id/buttonPlay"
+            android:layout_width="88dp"
+            android:layout_height="88dp"
+            android:layout_marginStart="32dp"
+            android:layout_marginEnd="32dp"
+            android:background="@drawable/shape_player_button"
+            android:contentDescription="@string/play_pause"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_play_white" />
+
+        <ImageButton
+            android:id="@+id/buttonNext"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/next_station"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_skip_next"
+            app:tint="#FFFFFF" />
+
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="0.3" />
+
+    <ImageButton
+        android:id="@+id/buttonFullscreenExit"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginBottom="32dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/exit_fullscreen"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ic_expand_more"
+        app:tint="#FFFFFF" />
+
+</LinearLayout>

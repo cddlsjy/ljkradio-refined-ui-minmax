@@ -21,6 +21,7 @@ class StationStorage(private val context: Context) {
         private const val KEY_USE_EXO_PLAYER = "use_exo_player"
         private const val KEY_USE_HARDWARE_DECODE = "use_hardware_decode"
         private const val KEY_AUTO_FULLSCREEN_ON_START = "auto_fullscreen_on_start"
+        private const val KEY_FULLSCREEN_DISPLAY_MODE = "fullscreen_display_mode"
     }
 
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -300,5 +301,22 @@ class StationStorage(private val context: Context) {
      */
     fun getAutoFullscreenOnStart(): Boolean {
         return prefs.getBoolean(KEY_AUTO_FULLSCREEN_ON_START, false)
+    }
+
+    /**
+     * 保存全屏显示模式
+     * 0 - 原显示方案
+     * 1 - 竖屏垂直居中方案
+     * 2 - 横屏左右分栏方案
+     */
+    fun saveFullscreenDisplayMode(mode: Int) {
+        prefs.edit().putInt(KEY_FULLSCREEN_DISPLAY_MODE, mode).apply()
+    }
+
+    /**
+     * 获取全屏显示模式（默认 0）
+     */
+    fun getFullscreenDisplayMode(): Int {
+        return prefs.getInt(KEY_FULLSCREEN_DISPLAY_MODE, 0)
     }
 }
