@@ -39,30 +39,6 @@
     </LinearLayout>
 
     <RadioGroup
-        android:id="@+id/player_engine_group"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginTop="16dp">
-
-        <RadioButton
-            android:id="@+id/radio_exo"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="ExoPlayer"
-            android:checked="true" />
-
-        <RadioButton
-            android:id="@+id/radio_ijk"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="IjkPlayer" />
-
-    </RadioGroup>
-
-    <RadioGroup
         android:id="@+id/decode_mode_group"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -85,30 +61,6 @@
             android:text="软解码" />
 
     </RadioGroup>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:layout_marginTop="16dp">
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="遥控器移动时自动播放"
-            android:textSize="14sp"
-            android:textColor="@color/text_secondary" />
-
-        <androidx.appcompat.widget.SwitchCompat
-            android:id="@+id/auto_play_switch"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:checked="true"
-            app:thumbTint="@color/colorPrimary" />
-
-    </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
