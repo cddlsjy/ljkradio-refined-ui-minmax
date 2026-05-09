@@ -41,8 +41,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="start"
-            android:textSize="28sp"
-            android:textColor="#212121"
+            android:textSize="18sp"
+            android:textColor="#757575"
             android:textStyle="bold"
             tools:text="CNR-15 中国交通广播" />
 
@@ -52,9 +52,9 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:gravity="start"
-            android:textSize="18sp"
-            android:textColor="#757575"
-            tools:text="CNR-15 中国交通广播" />
+            android:textSize="28sp"
+            android:textColor="#212121"
+            tools:text="汪峰 - 生来彷徨" />
 
         <LinearLayout
             android:layout_width="wrap_content"

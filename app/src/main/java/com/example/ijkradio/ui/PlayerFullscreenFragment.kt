@@ -9,6 +9,8 @@ import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.TextView
 import androidx.fragment.app.Fragment
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.imageview.ShapeableImageView
 import com.example.ijkradio.MainActivity
 import com.example.ijkradio.R
@@ -24,6 +26,8 @@ class PlayerFullscreenFragment : Fragment() {
     private lateinit var buttonPlay: ImageButton
     private lateinit var buttonPrev: ImageButton
     private lateinit var buttonNext: ImageButton
+    private var stationsRecyclerView: RecyclerView? = null
+    private var stationAdapter: StationAdapter? = null
 
     private var playerManager: IPlayerManager? = null
     private var currentStation: Station? = null
@@ -32,6 +36,7 @@ class PlayerFullscreenFragment : Fragment() {
 
     private var isViewReady = false
     private var pendingStation: Station? = null
+    private var stationsList: List<Station>? = null
 
     interface PlayerFullscreenListener {
         fun onExitFullscreen()
@@ -45,6 +50,13 @@ class PlayerFullscreenFragment : Fragment() {
 
     fun setDisplayMode(mode: Int) {
         this.displayMode = mode
+    }
+
+    fun setStationsList(stations: List<Station>) {
+        this.stationsList = stations
+        if (isViewReady && displayMode == 1) {
+            stationAdapter?.submitList(stations)
+        }
     }
 
     override fun onCreateView(
@@ -70,6 +82,22 @@ class PlayerFullscreenFragment : Fragment() {
         buttonPlay = view.findViewById(R.id.buttonPlay)
         buttonPrev = view.findViewById(R.id.buttonPrev)
         buttonNext = view.findViewById(R.id.buttonNext)
+        
+        // 检查是否是竖屏带列表的布局
+        stationsRecyclerView = view.findViewById(R.id.stationsRecyclerView)
+        stationsRecyclerView?.let { rv ->
+            stationAdapter = StationAdapter(
+                onStationClick = { station ->
+                    (activity as? MainActivity)?.let { activity ->
+                        activity.onStationClicked(station)
+                    }
+                },
+                onDeleteClick = { }
+            )
+            rv.layoutManager = LinearLayoutManager(context)
+            rv.adapter = stationAdapter
+            stationsList?.let { stationAdapter?.submitList(it) }
+        }
 
         buttonPlay.setOnClickListener {
             togglePlayPause()
@@ -110,6 +138,7 @@ class PlayerFullscreenFragment : Fragment() {
             textViewStationName.text = station.name
             textViewStationName.visibility = View.VISIBLE
             loadStationLogo(station)
+            stationAdapter?.setSelectedStation(station)
         } else {
             textViewStationName.visibility = View.GONE
             stationIcon.setImageResource(R.drawable.ic_default_station_image_180dp)
@@ -144,33 +173,43 @@ class PlayerFullscreenFragment : Fragment() {
                 textViewStationName.visibility = View.GONE
                 buttonPlay.setImageResource(R.drawable.ic_play_white)
                 isPlaying = false
+                stationAdapter?.setPlayingStation(null)
             }
             is PlaybackState.Buffering -> {
                 textViewGeneralInfo.text = getString(R.string.buffering)
                 textViewStationName.visibility = View.VISIBLE
+                textViewStationName.text = state.stationName
                 buttonPlay.setImageResource(R.drawable.ic_pause_white)
                 isPlaying = true
+                val playingStation = stationsList?.find { it.name == state.stationName }
+                stationAdapter?.setPlayingStation(playingStation)
             }
             is PlaybackState.Playing -> {
                 textViewStationName.visibility = View.VISIBLE
                 textViewStationName.text = state.stationName
                 buttonPlay.setImageResource(R.drawable.ic_pause_white)
                 isPlaying = true
+                // 只有当当前信息是停止或缓冲状态时，才设置为电台名
+                // 歌曲信息将通过 updateMetadata 更新
                 if (textViewGeneralInfo.text == getString(R.string.status_stopped) ||
                     textViewGeneralInfo.text == getString(R.string.buffering)) {
-                    textViewGeneralInfo.text = state.stationName
+                    // 不设置为电台名，保持为空或等待元数据
                 }
+                val playingStation = stationsList?.find { it.name == state.stationName }
+                stationAdapter?.setPlayingStation(playingStation)
             }
             is PlaybackState.Paused -> {
                 textViewStationName.visibility = View.VISIBLE
                 textViewStationName.text = currentStation?.name ?: ""
                 buttonPlay.setImageResource(R.drawable.ic_play_white)
                 isPlaying = false
+                stationAdapter?.setPlayingStation(null)
             }
             is PlaybackState.Error -> {
                 textViewGeneralInfo.text = getString(R.string.status_error, state.message)
                 buttonPlay.setImageResource(R.drawable.ic_play_white)
                 isPlaying = false
+                stationAdapter?.setPlayingStation(null)
             }
         }
     }

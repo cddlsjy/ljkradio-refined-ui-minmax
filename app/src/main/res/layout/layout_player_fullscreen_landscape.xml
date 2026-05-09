@@ -41,8 +41,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="start"
-            android:textSize="32sp"
-            android:textColor="#FFFFFF"
+            android:textSize="22sp"
+            android:textColor="#B0BEC5"
             android:textStyle="bold"
             tools:text="AsiaFM高清音乐台" />
 
@@ -52,8 +52,8 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:gravity="start"
-            android:textSize="22sp"
-            android:textColor="#B0BEC5"
+            android:textSize="32sp"
+            android:textColor="#FFFFFF"
             tools:text="汪峰 - 生来彷徨" />
 
         <LinearLayout

@@ -26,14 +26,14 @@
         android:id="@+id/textViewStationName"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
+        android:layout_marginTop="48dp"
         android:gravity="center"
         android:paddingStart="32dp"
         android:paddingEnd="32dp"
-        android:textSize="28sp"
-        android:textColor="@color/text_primary"
+        android:textSize="18sp"
+        android:textColor="#B0BEC5"
         android:textStyle="bold"
-        tools:text="AsiaFM亚洲音乐台" />
+        tools:text="AsiaFM高清音乐台" />
 
     <TextView
         android:id="@+id/textViewGeneralInfo"
@@ -43,8 +43,8 @@
         android:gravity="center"
         android:paddingStart="32dp"
         android:paddingEnd="32dp"
-        android:textSize="18sp"
-        android:textColor="@color/text_secondary"
+        android:textSize="24sp"
+        android:textColor="#FFFFFF"
         tools:text="汪峰 - 生来彷徨" />
 
     <View

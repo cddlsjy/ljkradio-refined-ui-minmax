@@ -866,6 +866,7 @@ class MainActivity : AppCompatActivity() {
                 }
             })
             setPlayerManager(playerManager)
+            setStationsList(stations)
         }
 
         supportFragmentManager.beginTransaction()
