@@ -81,13 +81,13 @@ class PlayerFullscreenFragment : Fragment() {
         if (!::stationIcon.isInitialized) return
         when (logoShape) {
             0 -> { // 圆形
-                stationIcon.shapeAppearanceModel = stationIcon.shapeAppearanceModel
+                stationIcon.shapeAppearanceModel = ShapeAppearanceModel()
                     .toBuilder()
-                    .setAllCorners(CornerFamily.ROUNDED, 999f)
+                    .setAllCorners(CornerFamily.ROUNDED, 1000f)
                     .build()
             }
             1 -> { // 方型
-                stationIcon.shapeAppearanceModel = stationIcon.shapeAppearanceModel
+                stationIcon.shapeAppearanceModel = ShapeAppearanceModel()
                     .toBuilder()
                     .setAllCorners(CornerFamily.ROUNDED, 0f)
                     .build()
