@@ -105,11 +105,18 @@ class PlayerFullscreenFragment : Fragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
-        // 根据背景颜色选择布局
+        // 根据显示方案和背景颜色选择布局
+        val baseLayout = when (displayMode) {
+            1 -> R.layout.layout_player_fullscreen_portrait
+            2 -> R.layout.layout_player_fullscreen_landscape
+            else -> R.layout.layout_player_fullscreen
+        }
+        
+        // 如果选择了白色背景，使用白色版本的布局
         val layoutRes = if (backgroundColor == 1) {
             R.layout.layout_player_fullscreen_light
         } else {
-            R.layout.layout_player_fullscreen
+            baseLayout
         }
         return inflater.inflate(layoutRes, container, false)
     }
