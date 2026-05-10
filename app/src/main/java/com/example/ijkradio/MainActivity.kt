@@ -449,6 +449,7 @@ class MainActivity : AppCompatActivity() {
         val radioSoftware = dialogView.findViewById<RadioButton>(R.id.radio_software)
         val autoPlayLastStationSwitch = dialogView.findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.auto_play_last_station_switch)
         val autoFullscreenSwitch = dialogView.findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.auto_fullscreen_switch)
+        val displayModeSpinner = dialogView.findViewById<Spinner>(R.id.fullscreen_display_mode_spinner)
         val logoShapeSpinner = dialogView.findViewById<Spinner>(R.id.fullscreen_logo_shape_spinner)
         val backgroundColorSpinner = dialogView.findViewById<Spinner>(R.id.fullscreen_background_color_spinner)
         val importM3uButton = dialogView.findViewById<Button>(R.id.button_import_m3u)
@@ -467,6 +468,13 @@ class MainActivity : AppCompatActivity() {
 
         // 初始化自动全屏播放开关
         autoFullscreenSwitch.isChecked = stationStorage.getAutoFullscreenOnStart()
+
+        // 初始化全屏显示方案Spinner
+        val displayModes = arrayOf("原显示方案", "竖屏居中", "横屏分栏", "白色背景")
+        val displayModeAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, displayModes)
+        displayModeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        displayModeSpinner.adapter = displayModeAdapter
+        displayModeSpinner.setSelection(stationStorage.getFullscreenDisplayMode())
 
         // 初始化全屏Logo形状Spinner
         val logoShapes = arrayOf("圆形", "方型")
@@ -524,6 +532,10 @@ class MainActivity : AppCompatActivity() {
                 // 保存硬解码设置
                 stationStorage.saveUseHardwareDecode(useHardwareDecode)
                 playerManager.setHardwareDecode(useHardwareDecode)
+
+                // 保存全屏显示方案
+                val selectedDisplayMode = displayModeSpinner.selectedItemPosition
+                stationStorage.saveFullscreenDisplayMode(selectedDisplayMode)
 
                 // 保存全屏Logo形状
                 val selectedLogoShape = logoShapeSpinner.selectedItemPosition
