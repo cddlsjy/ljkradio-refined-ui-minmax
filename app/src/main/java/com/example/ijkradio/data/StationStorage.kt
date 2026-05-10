@@ -22,6 +22,7 @@ class StationStorage(private val context: Context) {
         private const val KEY_USE_HARDWARE_DECODE = "use_hardware_decode"
         private const val KEY_AUTO_FULLSCREEN_ON_START = "auto_fullscreen_on_start"
         private const val KEY_FULLSCREEN_DISPLAY_MODE = "fullscreen_display_mode"
+        private const val KEY_FULLSCREEN_LOGO_SHAPE = "fullscreen_logo_shape"
     }
 
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -318,5 +319,21 @@ class StationStorage(private val context: Context) {
      */
     fun getFullscreenDisplayMode(): Int {
         return prefs.getInt(KEY_FULLSCREEN_DISPLAY_MODE, 0)
+    }
+
+    /**
+     * 保存全屏Logo形状
+     * 0 - 圆形
+     * 1 - 方型
+     */
+    fun saveFullscreenLogoShape(shape: Int) {
+        prefs.edit().putInt(KEY_FULLSCREEN_LOGO_SHAPE, shape).apply()
+    }
+
+    /**
+     * 获取全屏Logo形状（默认 0 - 圆形）
+     */
+    fun getFullscreenLogoShape(): Int {
+        return prefs.getInt(KEY_FULLSCREEN_LOGO_SHAPE, 0)
     }
 }

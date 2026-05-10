@@ -12,6 +12,8 @@ import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.imageview.ShapeableImageView
+import com.google.android.material.shape.CornerFamily
+import com.google.android.material.shape.ShapeAppearanceModel
 import com.example.ijkradio.MainActivity
 import com.example.ijkradio.R
 import com.example.ijkradio.data.Station
@@ -33,6 +35,7 @@ class PlayerFullscreenFragment : Fragment() {
     private var currentStation: Station? = null
     private var isPlaying = false
     private var displayMode: Int = 0
+    private var logoShape: Int = 0
 
     private var isViewReady = false
     private var pendingStation: Station? = null
@@ -56,6 +59,31 @@ class PlayerFullscreenFragment : Fragment() {
         this.stationsList = stations
         if (isViewReady && displayMode == 1) {
             stationAdapter?.submitList(stations)
+        }
+    }
+
+    fun setLogoShape(shape: Int) {
+        this.logoShape = shape
+        if (isViewReady) {
+            applyLogoShape()
+        }
+    }
+
+    private fun applyLogoShape() {
+        if (!::stationIcon.isInitialized) return
+        when (logoShape) {
+            0 -> { // 圆形
+                stationIcon.shapeAppearanceModel = stationIcon.shapeAppearanceModel
+                    .toBuilder()
+                    .setAllCorners(CornerFamily.ROUNDED, 999f)
+                    .build()
+            }
+            1 -> { // 方型
+                stationIcon.shapeAppearanceModel = stationIcon.shapeAppearanceModel
+                    .toBuilder()
+                    .setAllCorners(CornerFamily.ROUNDED, 0f)
+                    .build()
+            }
         }
     }
 
@@ -118,6 +146,8 @@ class PlayerFullscreenFragment : Fragment() {
         isViewReady = true
         pendingStation?.let { applyStationInfo(it) }
         pendingStation = null
+        
+        applyLogoShape()
     }
 
     fun setPlayerManager(manager: IPlayerManager) {

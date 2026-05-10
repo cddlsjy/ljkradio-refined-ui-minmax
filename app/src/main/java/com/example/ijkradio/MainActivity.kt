@@ -450,6 +450,7 @@ class MainActivity : AppCompatActivity() {
         val autoPlayLastStationSwitch = dialogView.findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.auto_play_last_station_switch)
         val autoFullscreenSwitch = dialogView.findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.auto_fullscreen_switch)
         val displayModeSpinner = dialogView.findViewById<Spinner>(R.id.fullscreen_display_mode_spinner)
+        val logoShapeSpinner = dialogView.findViewById<Spinner>(R.id.fullscreen_logo_shape_spinner)
         val importM3uButton = dialogView.findViewById<Button>(R.id.button_import_m3u)
         val exportM3uButton = dialogView.findViewById<Button>(R.id.button_export_m3u)
 
@@ -473,6 +474,13 @@ class MainActivity : AppCompatActivity() {
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         displayModeSpinner.adapter = adapter
         displayModeSpinner.setSelection(stationStorage.getFullscreenDisplayMode())
+
+        // 初始化全屏Logo形状Spinner
+        val logoShapes = arrayOf("圆形", "方型")
+        val logoShapeAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, logoShapes)
+        logoShapeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        logoShapeSpinner.adapter = logoShapeAdapter
+        logoShapeSpinner.setSelection(stationStorage.getFullscreenLogoShape())
 
         // 音量滑块监听器
         volumeSlider.addOnChangeListener { slider: Slider, value: Float, fromUser: Boolean ->
@@ -520,6 +528,10 @@ class MainActivity : AppCompatActivity() {
                 // 保存全屏显示模式
                 val selectedMode = displayModeSpinner.selectedItemPosition
                 stationStorage.saveFullscreenDisplayMode(selectedMode)
+
+                // 保存全屏Logo形状
+                val selectedLogoShape = logoShapeSpinner.selectedItemPosition
+                stationStorage.saveFullscreenLogoShape(selectedLogoShape)
             }
             .setNegativeButton("取消", null)
             .create()
@@ -863,6 +875,7 @@ class MainActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         val displayMode = stationStorage.getFullscreenDisplayMode()
+        val logoShape = stationStorage.getFullscreenLogoShape()
         fullscreenFragment = PlayerFullscreenFragment.newInstance().apply {
             setDisplayMode(displayMode)
             setPlayerFullscreenListener(object : PlayerFullscreenFragment.PlayerFullscreenListener {
@@ -872,6 +885,7 @@ class MainActivity : AppCompatActivity() {
             })
             setPlayerManager(playerManager)
             setStationsList(stations)
+            setLogoShape(logoShape)
         }
 
         supportFragmentManager.beginTransaction()
